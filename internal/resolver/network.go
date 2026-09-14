@@ -60,6 +60,13 @@ func (r *NetworkResolver) Query(ctx context.Context, server string, req *dns.Msg
 	}
 	defer r.release()
 
+	if server == "" {
+		server = r.cfg.UDPAddr
+	}
+	if server == "" {
+		server = DefaultServer(nil)
+	}
+
 	retries := r.cfg.Retries
 	if retries < 0 {
 		retries = 0

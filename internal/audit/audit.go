@@ -63,8 +63,23 @@ func New(zone string, opt Options) *Runner {
 			MaxQueries: opt.MaxQueries,
 			MaxQPS:     opt.MaxQPS,
 		},
+		UDPAddr: resolver.DefaultServer(splitResolvers(opt.Resolver)),
 	}
 	return &Runner{opt: opt, zone: zone, res: newResolver(cfg, opt)}
+}
+
+// splitResolvers parses a comma-separated resolver list.
+func splitResolvers(s string) []string {
+	if strings.TrimSpace(s) == "" {
+		return nil
+	}
+	var out []string
+	for _, p := range strings.Split(s, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // resolverFactory builds the resolver. Overridable in tests.
