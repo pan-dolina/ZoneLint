@@ -62,7 +62,17 @@ func New(zone string, opt Options) *Runner {
 			MaxQPS:     opt.MaxQPS,
 		},
 	}
-	return &Runner{opt: opt, zone: zone, res: resolver.NewNetwork(cfg)}
+	return &Runner{opt: opt, zone: zone, res: newResolver(cfg, opt)}
+}
+
+// resolverFactory builds the resolver. Overridable in tests.
+// ResolverFactory builds the resolver. Overridable in tests.
+var ResolverFactory = func(cfg resolver.Config, opt Options) resolver.Resolver {
+	return resolver.NewNetwork(cfg)
+}
+
+func newResolver(cfg resolver.Config, opt Options) resolver.Resolver {
+	return ResolverFactory(cfg, opt)
 }
 
 // NewWithResolver builds a Runner with an explicit resolver (for tests).
