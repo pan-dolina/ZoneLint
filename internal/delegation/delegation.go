@@ -178,3 +178,31 @@ func ExtractNSFromResponse(resp *dns.Msg, name string) ParentView {
 	}
 	return view
 }
+
+// ExtractChildFromResponse builds a ChildView from the child authoritative
+// server's response to a zone NS query.
+func ExtractChildFromResponse(resp *dns.Msg, zone string) ChildView {
+	fqdn := dns.Fqdn(strings.ToLower(zone))
+	byName := dnsutil.RRByName(resp.Answer)
+	byNameAuthority := dnsutil.RRByName(resp.Ns)
+	var nsRR []dns.RR
+	for _, set := range [][]dns.RR{byName[fqdn], byNameAuthority[fqdn]} {
+		nsRR = append(nsRR, set...)
+	}
+	view := ChildView{NSAddr: map[string][]net.IP{}, NSAddrAAAA: map[string][]net.IP{}}
+	view.NSRR = nsRR
+	view.NS = dnsutil.NSNames(nsRR)
+	// Collect glue from the child response.
+	for _, rr := range append(append([]dns.RR{}, resp.Answer...), resp.Ns...) {
+		if rr == nil {
+			continue
+		}
+		switch r := rr.(type) {
+		case *dns.A:
+			view.NSAddr[strings.ToLower(r.Hdr.Name)] = append(view.NSAddr[strings.ToLower(r.Hdr.Name)], r.A)
+		case *dns.AAAA:
+			view.NSAddrAAAA[strings.ToLower(r.Hdr.Name)] = append(view.NSAddrAAAA[strings.ToLower(r.Hdr.Name)], r.AAAA)
+		}
+	}
+	return view
+}

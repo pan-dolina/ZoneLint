@@ -82,7 +82,7 @@ func caa(zone string, critical int, tag, value string, ttl uint32) dns.RR {
 	r.Hdr = dns.RR_Header{Name: name(zone), Rrtype: dns.TypeCAA, Class: dns.ClassINET, Ttl: ttl}
 	r.Tag = tag
 	r.Value = value
-	r.Flags = byte(critical)
+	r.Flag = byte(critical)
 	return r
 }
 
@@ -216,8 +216,8 @@ func CNANameLoop() *resolver.Zone {
 				ns(zone, "ns1.cnameraise.test.", 3600),
 				a("ns1.cnameraise.test.", "198.51.100.70", 3600),
 			},
-			"a.cnameraise.test.": cname("a.cnameraise.test.", "b.cnameraise.test.", 300),
-			"b.cnameraise.test.": cname("b.cnameraise.test.", "a.cnameraise.test.", 300),
+			"a.cnameraise.test.": []dns.RR{cname("a.cnameraise.test.", "b.cnameraise.test.", 300)},
+			"b.cnameraise.test.": []dns.RR{cname("b.cnameraise.test.", "a.cnameraise.test.", 300)},
 		},
 	}
 }
@@ -233,7 +233,7 @@ func CNDangling() *resolver.Zone {
 				ns(zone, "ns1.cnameraisedangle.test.", 3600),
 				a("ns1.cnameraisedangle.test.", "198.51.100.80", 3600),
 			},
-			"dangling.cnameraisedangle.test.": cname("dangling.cnameraisedangle.test.", "missing.example.", 300),
+			"dangling.cnameraisedangle.test.": []dns.RR{cname("dangling.cnameraisedangle.test.", "missing.example.", 300)},
 		},
 	}
 }
@@ -248,7 +248,7 @@ func PrivateAddr() *resolver.Zone {
 				soa(zone, "ns1.privateaddr.test.", "admin.privateaddr.test.", 1, 7200, 1800, 1209600, 3600, 3600),
 				ns(zone, "ns1.privateaddr.test.", 3600),
 				a("ns1.privateaddr.test.", "198.51.100.90", 3600),
-				a("host.privateaddr.test.", "10.0.0.5", 300),
+				a(zone, "10.0.0.5", 300),
 			},
 		},
 	}

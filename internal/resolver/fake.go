@@ -72,9 +72,21 @@ func (f *FakeResolver) Query(ctx context.Context, server string, req *dns.Msg) (
 	}
 
 	resp := f.response(req, dns.RcodeSuccess)
+	resp.Authoritative = true
 	for _, rr := range zone.Records[name] {
 		if rr.Header().Rrtype == q.Qtype || q.Qtype == dns.TypeANY {
 			resp.Answer = append(resp.Answer, dns.Copy(rr))
+		}
+	}
+	// For ANY queries, also include records from other names in the same zone
+	// so the audit can gather the full zone for record-level checks.
+	if q.Qtype == dns.TypeANY {
+		for _, names := range zone.Records {
+			for _, rr := range names {
+				if rr.Header().Name != dns.Fqdn(strings.ToLower(zone.Name)) {
+					resp.Answer = append(resp.Answer, dns.Copy(rr))
+				}
+			}
 		}
 	}
 	if len(resp.Answer) == 0 {
