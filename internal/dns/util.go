@@ -28,7 +28,10 @@ func ipTo4(ip net.IP) []byte {
 func SafeNewMsg(name string, qtype uint16) *dns.Msg {
 	m := new(dns.Msg)
 	m.SetQuestion(dns.Fqdn(name), qtype)
-	m.RecursionDesired = false
+	// Recursion is desired by default: the primary resolver is a recursive
+	// resolver (system resolver or a configured public resolver). Authoritative
+	// server probes disable recursion explicitly.
+	m.RecursionDesired = true
 	return m
 }
 

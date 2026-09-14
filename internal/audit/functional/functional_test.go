@@ -184,7 +184,7 @@ func TestRecursion(t *testing.T) {
 func TestJSONOutput(t *testing.T) {
 	res := run(t, "healthy.test.", testzones.Healthy(), audit.Options{Resolver: "fake"})
 	var buf strings.Builder
-	err := report.Render(&buf, "healthy.test.", report.FormatJSON, report.BuildSummary(res.Findings), res.Findings)
+	err := report.Render(&buf, "healthy.test.", report.FormatJSON, report.BuildSummary(res.Findings), res.Findings, res.Queries, res.Records)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +226,7 @@ func TestFindingsComplete(t *testing.T) {
 func TestHumanOutput(t *testing.T) {
 	res := run(t, "healthy.test.", testzones.Healthy(), audit.Options{Resolver: "fake"})
 	var buf strings.Builder
-	err := report.Render(&buf, "healthy.test.", report.FormatHuman, report.BuildSummary(res.Findings), res.Findings)
+	err := report.Render(&buf, "healthy.test.", report.FormatHuman, report.BuildSummary(res.Findings), res.Findings, res.Queries, res.Records)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,7 +239,7 @@ func TestHumanOutput(t *testing.T) {
 func TestSARIFOutput(t *testing.T) {
 	res := run(t, "axfr.test.", testzones.AXFRAllowed(), audit.Options{Resolver: "fake", Active: true})
 	var buf strings.Builder
-	err := report.Render(&buf, "axfr.test.", report.FormatSARIF, report.BuildSummary(res.Findings), res.Findings)
+	err := report.Render(&buf, "axfr.test.", report.FormatSARIF, report.BuildSummary(res.Findings), res.Findings, res.Queries, res.Records)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -19,7 +19,7 @@ func sampleFindings() []*findings.Finding {
 
 func TestHuman(t *testing.T) {
 	var buf bytes.Buffer
-	err := Render(&buf, "example.test.", FormatHuman, BuildSummary(sampleFindings()), sampleFindings())
+	err := Render(&buf, "example.test.", FormatHuman, BuildSummary(sampleFindings()), sampleFindings(), 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,7 +34,7 @@ func TestHuman(t *testing.T) {
 
 func TestJSON(t *testing.T) {
 	var buf bytes.Buffer
-	err := Render(&buf, "example.test.", FormatJSON, BuildSummary(sampleFindings()), sampleFindings())
+	err := Render(&buf, "example.test.", FormatJSON, BuildSummary(sampleFindings()), sampleFindings(), 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +53,7 @@ func TestJSON(t *testing.T) {
 
 func TestSARIF(t *testing.T) {
 	var buf bytes.Buffer
-	err := Render(&buf, "example.test.", FormatSARIF, BuildSummary(sampleFindings()), sampleFindings())
+	err := Render(&buf, "example.test.", FormatSARIF, BuildSummary(sampleFindings()), sampleFindings(), 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -50,9 +50,10 @@ type Result struct {
 
 // Runner holds the resolver and options for a run.
 type Runner struct {
-	opt  Options
-	res  resolver.Resolver
-	zone string
+	opt     Options
+	res     resolver.Resolver
+	zone    string
+	queries int
 }
 
 // New builds a Runner for a zone.
@@ -104,7 +105,7 @@ func (r *Runner) Run(ctx context.Context) *Result {
 
 	// 1. Resolve zone apex NS + SOA.
 	req := dnsutil.SafeNewMsg(r.zone, dns.TypeNS)
-	resp, err := r.res.Query(ctx, r.opt.Resolver, req)
+	resp, err := r.query(ctx, req)
 	if err != nil {
 		res.AddFinding(findings.New(findings.GeneralError, findings.SeverityHigh, findings.CategoryGeneral,
 			"Initial resolution failed"), r.zone)
@@ -113,7 +114,7 @@ func (r *Runner) Run(ctx context.Context) *Result {
 	}
 
 	// Gather all records at the apex via an ANY query (bounded, single query).
-	anyResp, err := r.res.Query(ctx, r.opt.Resolver, dnsutil.SafeNewMsg(r.zone, dns.TypeANY))
+	anyResp, err := r.query(ctx, dnsutil.SafeNewMsg(r.zone, dns.TypeANY))
 	if err == nil && anyResp != nil {
 		resp.Answer = append(resp.Answer, anyResp.Answer...)
 		resp.Ns = append(resp.Ns, anyResp.Ns...)
@@ -131,7 +132,7 @@ func (r *Runner) Run(ctx context.Context) *Result {
 
 	// Query the child subdomain to build the child view.
 	childZoneName := childZone(r.zone)
-	childNSResp, childErr := r.res.Query(ctx, r.opt.Resolver, dnsutil.SafeNewMsg(childZoneName, dns.TypeNS))
+	childNSResp, childErr := r.query(ctx, dnsutil.SafeNewMsg(childZoneName, dns.TypeNS))
 	var child delegation.ChildView
 	if childErr == nil && childNSResp != nil && len(childNSResp.Answer) > 0 {
 		child = delegation.ExtractChildFromResponse(childNSResp, childZoneName)
@@ -142,9 +143,12 @@ func (r *Runner) Run(ctx context.Context) *Result {
 	}
 
 	// 2b. Authserver probing (requires real network; skip for fakes).
-	if r.opt.Resolver != "fake" {
+	// Only probe authoritative servers directly. When the resolver is a
+	// recursive resolver the response is not authoritative, so the
+	// AA/SOA/NS checks would be false positives.
+	if r.opt.Resolver != "fake" && resp.Authoritative {
 		for _, nsHost := range parent.NS {
-			nsResp, err := r.res.Query(ctx, r.opt.Resolver, dnsutil.SafeNewMsg(r.zone, dns.TypeSOA))
+			nsResp, err := r.query(ctx, dnsutil.SafeNewMsg(r.zone, dns.TypeSOA))
 			if err != nil {
 				continue
 			}
@@ -206,7 +210,7 @@ func (r *Runner) Run(ctx context.Context) *Result {
 	if r.opt.Active {
 		for _, nsHost := range parent.NS {
 			xreq := dnsutil.SafeNewMsg(r.zone, dns.TypeAXFR)
-			xresp, err := r.res.Transfer(ctx, r.opt.Resolver, xreq)
+			xresp, err := r.transfer(ctx, xreq)
 			cfg := axfr.DefaultConfig()
 			cfg.ShowRecords = r.opt.ShowAXFR
 			o := axfr.ParseTransferResult(makeTransferResp(xresp, err), cfg)
@@ -222,7 +226,7 @@ func (r *Runner) Run(ctx context.Context) *Result {
 
 	// 11. Wildcard probe (always on; single random query).
 	if wcName, err := wildcard.ProbeName(r.zone); err == nil {
-		if wcResp, err := r.res.Query(ctx, r.opt.Resolver, dnsutil.SafeNewMsg(wcName, dns.TypeA)); err == nil && wcResp != nil {
+		if wcResp, err := r.query(ctx, dnsutil.SafeNewMsg(wcName, dns.TypeA)); err == nil && wcResp != nil {
 			if wildcard.IsWildcardResponse(wcResp, wcName) {
 				for _, f := range wildcard.Check(r.zone, wcName, true) {
 					res.AddFinding(f, r.zone)
@@ -238,7 +242,7 @@ func (r *Runner) Run(ctx context.Context) *Result {
 			if err != nil {
 				continue
 			}
-			recResp, err := r.res.Query(ctx, r.opt.Resolver, dnsutil.SafeNewMsg(recName, dns.TypeA))
+			recResp, err := r.query(ctx, dnsutil.SafeNewMsg(recName, dns.TypeA))
 			if err != nil {
 				continue
 			}
@@ -251,8 +255,22 @@ func (r *Runner) Run(ctx context.Context) *Result {
 
 	res.Findings = findings.Sorted(res.Findings)
 	res.Duration = time.Since(start)
-	res.Records = len(resp.Answer) + len(resp.Ns)
+
+	res.Records = len(resp.Answer) + len(resp.Ns) + len(apexRecords)
+	res.Queries = r.queries
 	return res
+}
+
+// query issues a single audited query and counts it.
+func (r *Runner) query(ctx context.Context, req *dns.Msg) (*dns.Msg, error) {
+	r.queries++
+	return r.res.Query(ctx, r.opt.Resolver, req)
+}
+
+// transfer issues a bounded AXFR and counts it.
+func (r *Runner) transfer(ctx context.Context, req *dns.Msg) ([]dns.RR, error) {
+	r.queries++
+	return r.res.Transfer(ctx, r.opt.Resolver, req)
 }
 
 // childZone returns the subdomain used to query the child authority. It
@@ -297,7 +315,7 @@ func collectApexRecords(ctx context.Context, r *Runner, initial *dns.Msg) []dns.
 
 	// Query additional record types at the apex.
 	for _, typ := range []uint16{dns.TypeA, dns.TypeAAAA, dns.TypeMX, dns.TypeCNAME, dns.TypeTXT, dns.TypeCAA} {
-		resp, err := r.res.Query(ctx, r.opt.Resolver, dnsutil.SafeNewMsg(r.zone, typ))
+		resp, err := r.query(ctx, dnsutil.SafeNewMsg(r.zone, typ))
 		if err != nil {
 			continue
 		}
@@ -315,7 +333,7 @@ func collectApexRecords(ctx context.Context, r *Runner, initial *dns.Msg) []dns.
 			}
 			seen[name] = true
 			for _, typ := range []uint16{dns.TypeA, dns.TypeAAAA} {
-				resp, err := r.res.Query(ctx, r.opt.Resolver, dnsutil.SafeNewMsg(strings.ToLower(dns.Fqdn(ns.Ns)), typ))
+				resp, err := r.query(ctx, dnsutil.SafeNewMsg(strings.ToLower(dns.Fqdn(ns.Ns)), typ))
 				if err != nil {
 					continue
 				}

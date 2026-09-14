@@ -174,13 +174,30 @@ func (r *NetworkResolver) perContext(ctx context.Context) time.Duration {
 	return per
 }
 
-// DefaultServer returns the first public resolver from a provided list or a
-// sensible default.
+// DefaultServer returns the first public resolver from a provided list, or the
+// first resolver from the host's system resolver configuration, falling back to
+// a sensible public default.
 func DefaultServer(resolvers []string) string {
 	if len(resolvers) > 0 {
 		return joinPort(resolvers[0])
 	}
+	// Prefer the host's configured resolver so queries work on networks where
+	// public resolvers (1.1.1.1, 8.8.8.8) are unreachable.
+	if srv, ok := systemResolver(); ok {
+		return joinPort(srv)
+	}
 	return "1.1.1.1:53"
+}
+
+// systemResolver returns the first nameserver from the host's resolver
+// configuration (/etc/resolv.conf on Unix). It reports ok=false when no
+// resolver can be determined.
+func systemResolver() (string, bool) {
+	conf, err := dns.ClientConfigFromFile("/etc/resolv.conf")
+	if err != nil || len(conf.Servers) == 0 {
+		return "", false
+	}
+	return conf.Servers[0], true
 }
 
 func joinPort(host string) string {

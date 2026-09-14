@@ -104,12 +104,18 @@ func human(sb *strings.Builder, zone string, s Summary, fs []*findings.Finding) 
 }
 
 // JSON renders findings as structured JSON.
-func JSON(sb *strings.Builder, zone string, s Summary, fs []*findings.Finding) error {
+func JSON(sb *strings.Builder, zone string, s Summary, fs []*findings.Finding, queries, records int) error {
 	out := map[string]interface{}{
 		"schema_version": "1",
 		"zone":           zone,
 		"summary":        s,
 		"findings":       findingsToJSON(fs),
+	}
+	if queries > 0 {
+		out["queries"] = queries
+	}
+	if records > 0 {
+		out["records"] = records
 	}
 	enc, err := json.MarshalIndent(out, "", "  ")
 	if err != nil {
@@ -217,11 +223,11 @@ func sarifLevel(sev string) string {
 }
 
 // Render writes a report in the given format to w.
-func Render(w io.Writer, zone string, format Format, s Summary, fs []*findings.Finding) error {
+func Render(w io.Writer, zone string, format Format, s Summary, fs []*findings.Finding, queries, records int) error {
 	var sb strings.Builder
 	switch format {
 	case FormatJSON:
-		JSON(&sb, zone, s, fs)
+		JSON(&sb, zone, s, fs, queries, records)
 	case FormatSARIF:
 		sarif(&sb, zone, s, fs)
 	default:

@@ -135,7 +135,7 @@ func writeReport(stdout, stderr io.Writer, domain string, format report.Format, 
 			domain, res.Queries, res.Records, summary.Total, float64(res.Duration.Microseconds())/1000.0)
 	}
 
-	if err := report.Render(stdout, domain, format, summary, res.Findings); err != nil {
+	if err := report.Render(stdout, domain, format, summary, res.Findings, res.Queries, res.Records); err != nil {
 		return err
 	}
 	return nil

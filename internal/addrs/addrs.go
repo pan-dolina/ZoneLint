@@ -73,7 +73,15 @@ func isLoopbackV4(ip net.IP) bool {
 }
 
 func isPrivateV4(ip net.IP, second uint8) bool {
-	return ip[0] == second && ip[1] <= 255 && ip[1] >= 0
+	if ip[0] != second {
+		return false
+	}
+	// 10.0.0.0/8 and 192.168.0.0/16 match any second byte.
+	// 172.16.0.0/12 only matches second bytes 16-31.
+	if second == 172 {
+		return ip[1] >= 16 && ip[1] <= 31
+	}
+	return true
 }
 
 func isDocV4(ip net.IP) bool {

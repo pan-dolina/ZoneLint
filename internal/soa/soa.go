@@ -86,9 +86,10 @@ func validName(n string) bool {
 	if !dns.IsFqdn(n) {
 		return false
 	}
-	// Reject labels longer than 63 chars and the root.
+	// Reject labels longer than 63 chars. The trailing dot produces an empty
+	// final label when splitting, which is expected and valid.
 	for _, label := range strings.Split(n, ".") {
-		if len(label) == 0 || len(label) > 63 {
+		if len(label) > 63 {
 			return false
 		}
 	}
