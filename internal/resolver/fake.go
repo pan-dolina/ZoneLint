@@ -78,6 +78,23 @@ func (f *FakeResolver) Query(ctx context.Context, server string, req *dns.Msg) (
 			resp.Answer = append(resp.Answer, dns.Copy(rr))
 		}
 	}
+	// Wildcard matching: if the exact name is absent, try a *.parent match.
+	if len(resp.Answer) == 0 {
+		for key, rrs := range zone.Records {
+			if strings.HasPrefix(key, "*.") {
+				parent := key[2:]
+				if strings.HasSuffix(name, parent) {
+					for _, rr := range rrs {
+						if rr.Header().Rrtype == q.Qtype || q.Qtype == dns.TypeANY {
+							matched := dns.Copy(rr)
+							matched.Header().Name = name
+							resp.Answer = append(resp.Answer, matched)
+						}
+					}
+				}
+			}
+		}
+	}
 	// For ANY queries, also include records from other names in the same zone
 	// so the audit can gather the full zone for record-level checks.
 	if q.Qtype == dns.TypeANY {

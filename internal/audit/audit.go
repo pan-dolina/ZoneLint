@@ -9,6 +9,7 @@ import (
 
 	"github.com/miekg/dns"
 
+	"github.com/example/ZoneLint/internal/active"
 	"github.com/example/ZoneLint/internal/addrs"
 	"github.com/example/ZoneLint/internal/authserver"
 	"github.com/example/ZoneLint/internal/axfr"
@@ -23,6 +24,7 @@ import (
 	"github.com/example/ZoneLint/internal/resolver"
 	"github.com/example/ZoneLint/internal/soa"
 	"github.com/example/ZoneLint/internal/ttl"
+	"github.com/example/ZoneLint/internal/wildcard"
 )
 
 // Options configures an audit run.
@@ -164,7 +166,8 @@ func (r *Runner) Run(ctx context.Context) *Result {
 
 	// 7. CNAME check.
 	cgraph := cname.Build(apexRecords)
-	for _, f := range cname.Check(r.zone, cgraph, 8, func(string) bool { return true }) {
+	resolveTarget := buildResolveTarget(apexRecords, r.zone)
+	for _, f := range cname.Check(r.zone, cgraph, 8, resolveTarget) {
 		res.AddFinding(f, r.zone)
 	}
 
@@ -193,7 +196,39 @@ func (r *Runner) Run(ctx context.Context) *Result {
 			cfg.ShowRecords = r.opt.ShowAXFR
 			o := axfr.ParseTransferResult(makeTransferResp(xresp, err), cfg)
 			o.Server = nsHost
+			if err != nil && err == resolver.ErrZoneRefused {
+				o.Status = "refused"
+			}
 			for _, f := range axfr.Evaluate(r.zone, nsHost, o) {
+				res.AddFinding(f, r.zone)
+			}
+		}
+	}
+
+	// 11. Wildcard probe (always on; single random query).
+	if wcName, err := wildcard.ProbeName(r.zone); err == nil {
+		if wcResp, err := r.res.Query(ctx, r.opt.Resolver, dnsutil.SafeNewMsg(wcName, dns.TypeA)); err == nil && wcResp != nil {
+			if wildcard.IsWildcardResponse(wcResp, wcName) {
+				for _, f := range wildcard.Check(r.zone, wcName, true) {
+					res.AddFinding(f, r.zone)
+				}
+			}
+		}
+	}
+
+	// 12. Active recursion (opt-in).
+	if r.opt.Active {
+		for _, nsHost := range parent.NS {
+			recName, err := active.RandomName(r.zone)
+			if err != nil {
+				continue
+			}
+			recResp, err := r.res.Query(ctx, r.opt.Resolver, dnsutil.SafeNewMsg(recName, dns.TypeA))
+			if err != nil {
+				continue
+			}
+			rp := active.CheckRecursion(nsHost, r.zone, recResp)
+			for _, f := range active.Check(nsHost, r.zone, rp) {
 				res.AddFinding(f, r.zone)
 			}
 		}
@@ -209,6 +244,32 @@ func (r *Runner) Run(ctx context.Context) *Result {
 // prepends "sub." to the zone, e.g. "example.test." -> "sub.example.test.".
 func childZone(zone string) string {
 	return "sub." + zone
+}
+
+// buildResolveTarget returns a function that reports whether a name resolves to
+// a record within the audited zone. Names outside the zone (or with no record)
+// are treated as unresolved, enabling dangling-CNAME detection.
+func buildResolveTarget(records []dns.RR, zone string) func(string) bool {
+	inZone := map[string]bool{}
+	for _, rr := range records {
+		if rr == nil {
+			continue
+		}
+		inZone[strings.ToLower(dns.Fqdn(rr.Header().Name))] = true
+	}
+	zone = strings.ToLower(dns.Fqdn(zone))
+	return func(name string) bool {
+		name = strings.ToLower(dns.Fqdn(name))
+		if inZone[name] {
+			return true
+		}
+		// A target that is a subdomain of the audited zone resolves if the
+		// zone itself is present (delegation boundary).
+		if strings.HasSuffix(name, "."+zone) {
+			return inZone[zone]
+		}
+		return false
+	}
 }
 
 // collectApexRecords gathers A/AAAA/MX/CNAME/TXT/CAA records at the apex and

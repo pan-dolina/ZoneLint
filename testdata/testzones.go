@@ -4,7 +4,11 @@
 package testzones
 
 import (
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/base64"
 	"net"
+	"time"
 
 	"github.com/miekg/dns"
 
@@ -12,6 +16,40 @@ import (
 )
 
 func name(s string) string { return dns.Fqdn(s) }
+
+// signRR returns a signed copy of rr with the given RRSIG timing fields. The
+// signature is a placeholder (not cryptographically verified) sufficient for the
+// audit's timing/algorithm checks.
+func signRR(rr dns.RR, rtype uint16, exp, inc uint32, flags uint16, algo uint8) dns.RR {
+	clone := dns.Copy(rr)
+	sig := new(dns.RRSIG)
+	sig.Hdr = dns.RR_Header{Name: clone.Header().Name, Rrtype: dns.TypeRRSIG, Class: dns.ClassINET, Ttl: clone.Header().Ttl}
+	sig.TypeCovered = rtype
+	sig.Algorithm = algo
+	sig.Labels = uint8(len(splitLabels(clone.Header().Name)))
+	sig.OrigTtl = clone.Header().Ttl
+	sig.Expiration = exp
+	sig.Inception = inc
+	sig.KeyTag = 1234
+	sig.SignerName = clone.Header().Name
+	sig.Signature = "placeholder-signature-for-tests"
+	return sig
+}
+
+func splitLabels(n string) []string {
+	var out []string
+	start := 0
+	for i := 0; i < len(n); i++ {
+		if n[i] == '.' {
+			out = append(out, n[start:i])
+			start = i + 1
+		}
+	}
+	if start < len(n) {
+		out = append(out, n[start:])
+	}
+	return out
+}
 
 func mustIP(s string) net.IP {
 	ip := net.ParseIP(s)
@@ -199,6 +237,8 @@ func Wildcard() *resolver.Zone {
 				ns(zone, "ns1.wildcard.test.", 3600),
 				a("ns1.wildcard.test.", "198.51.100.60", 3600),
 				a(zone, "203.0.113.70", 300),
+			},
+			"*.wildcard.test.": {
 				a("*.wildcard.test.", "203.0.113.71", 300),
 			},
 		},
@@ -281,6 +321,59 @@ func ExtremeTTL() *resolver.Zone {
 				soa(zone, "ns1.extremettl.test.", "admin.extremettl.test.", 1, 7200, 1800, 1209600, 3600, 3600),
 				ns(zone, "ns1.extremettl.test.", 3600),
 				a(zone, "203.0.113.110", 999999999),
+			},
+		},
+	}
+}
+
+// DNSKEYRecord builds a valid Ed25519 DNSKEY record for the zone.
+func DNSKEYRecord(zone string) dns.RR {
+	priv, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		panic(err)
+	}
+	dk := new(dns.DNSKEY)
+	dk.Hdr = dns.RR_Header{Name: zone, Rrtype: dns.TypeDNSKEY, Class: dns.ClassINET, Ttl: 3600}
+	dk.Flags = 256
+	dk.Protocol = 1
+	dk.Algorithm = 15 // Ed25519
+	dk.PublicKey = base64.StdEncoding.EncodeToString(priv[32:])
+	return dk
+}
+
+// ExpireDNSSec has a valid DNSKEY but an expired RRSIG.
+func ExpireDNSSec() *resolver.Zone {
+	zone := "expireddnssec.test."
+	now := time.Now().Add(-48 * time.Hour)
+	exp := uint32(now.Add(-1 * time.Hour).Unix())
+	inc := uint32(now.Add(-48 * time.Hour).Unix())
+	a := a(zone, "203.0.113.20", 300)
+	signed := signRR(a, dns.TypeA, exp, inc, 256, 15)
+	return &resolver.Zone{
+		Name: zone,
+		Records: map[string][]dns.RR{
+			zone: {
+				soa(zone, "ns1.expireddnssec.test.", "admin.expireddnssec.test.", 2024010101, 7200, 1800, 1209600, 3600, 3600),
+				ns(zone, "ns1.expireddnssec.test.", 3600),
+				DNSKEYRecord(zone),
+				a,
+				signed,
+			},
+		},
+	}
+}
+
+// BrokenDNSSec has a DNSKEY but no RRSIG (incomplete DNSSEC).
+func BrokenDNSSec() *resolver.Zone {
+	zone := "brokendnssec.test."
+	return &resolver.Zone{
+		Name: zone,
+		Records: map[string][]dns.RR{
+			zone: {
+				soa(zone, "ns1.brokendnssec.test.", "admin.brokendnssec.test.", 2024010101, 7200, 1800, 1209600, 3600, 3600),
+				ns(zone, "ns1.brokendnssec.test.", 3600),
+				DNSKEYRecord(zone),
+				a(zone, "203.0.113.30", 300),
 			},
 		},
 	}

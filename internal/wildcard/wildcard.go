@@ -38,19 +38,22 @@ func Check(zone, probeName string, hasWildcard bool) []*findings.Finding {
 }
 
 // IsWildcardResponse reports whether a response indicates a wildcard answer.
-func IsWildcardResponse(resp *dns.Msg) bool {
+// probeName is the random name queried; a wildcard answer returns records for
+// that name even though it does not exist.
+func IsWildcardResponse(resp *dns.Msg, probeName string) bool {
 	if resp == nil {
 		return false
 	}
 	if resp.Rcode != dns.RcodeSuccess {
 		return false
 	}
+	queried := strings.ToLower(dns.Fqdn(probeName))
 	for _, rr := range resp.Answer {
 		if rr == nil {
 			continue
 		}
 		name := strings.ToLower(dns.Fqdn(rr.Header().Name))
-		if strings.Contains(name, "*.") {
+		if strings.Contains(name, "*.") || name == queried {
 			return true
 		}
 	}
