@@ -4,13 +4,11 @@ This document describes how to develop and test ZoneLint.
 
 ## Requirements
 
-- Go 1.23+
-- The Go toolchain is vendored under `.toolchain/`. Source `.env.sh` to set up
-  the environment:
+- Go 1.23+ (see `go.mod`)
+- A standard Go toolchain installed and on your `PATH`
 
-```sh
-source .env.sh
-```
+The project uses the system Go toolchain. No vendoring or local
+environment scripts are required.
 
 ## Build
 

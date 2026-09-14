@@ -7,7 +7,6 @@ This document lists the checks to run before publishing a release.
 1. **Full test suite passes**
 
    ```sh
-   source .env.sh
    go test -race -count=1 ./...
    ```
 
