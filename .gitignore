@@ -1,0 +1,16 @@
+# Build output
+/bin/
+/dist/
+*.exe
+*.test
+*.out
+
+# Go build/cache artifacts (kept inside the workspace, never committed)
+/.gopath/
+/.gocache/
+/.gomodcache/
+/.toolchain/
+
+# Editor / OS
+.DS_Store
+*.swp
