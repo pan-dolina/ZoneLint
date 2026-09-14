@@ -1,0 +1,27 @@
+# gosec configuration for ZoneLint
+# https://github.com/securego/gosec
+
+include:
+  - G101  # (already covered by go vet)
+  - G102  # bind to all interfaces
+  - G104  # unhandled errors
+  - G107  # url variable in http request
+  - G110  # potential HTTP request made with variable url
+  - G115  # integer overflow conversion
+
+exclude:
+  # Test fixtures use synthetic DNS records and random bytes.
+  - G404  # weak random — intentional for test zone labels
+  - G505  # crypto/md5 — not used for security
+  - G107  # url variable in test helpers
+
+exclude-rules:
+  # Fuzz targets intentionally feed arbitrary bytes to parsers.
+  - path: internal/dnssec/fuzz_test.go
+    checks:
+      - G104
+
+  # Audit harness uses context with timeout; ignore context leak lint in tests.
+  - path: _test.go
+    checks:
+      - G104
