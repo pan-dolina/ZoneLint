@@ -46,6 +46,11 @@ jobs:
           go-version-file: go.mod
           check-latest: true
 
+      # Allow the Go toolchain to auto-upgrade so security scanners that
+      # require a newer toolchain than go.mod's minimum can run.
+      env:
+        GOTOOLCHAIN: auto
+
       - name: govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
 
