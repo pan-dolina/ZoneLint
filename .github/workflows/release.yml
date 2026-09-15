@@ -145,7 +145,7 @@ jobs:
         run: |
           bin="$PWD/dist/smoke/zonelint"
           [ -f "$bin.exe" ] && bin="$bin.exe"
-          ZONELINT_BIN="$bin" ZONELINT_EXPECT_VERSION="$VERSION" go test -count=1 ./test/smoke
+          ZONELINT_BIN="$bin" ZONELINT_EXPECT_VERSION="$VERSION" go test -count=1 -tags smoke ./test/smoke
 
   publish:
     needs: [build, smoke]
