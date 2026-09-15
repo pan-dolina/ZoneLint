@@ -205,10 +205,6 @@ func splitLabels(n string) []string {
 	return strings.Split(n, ".")
 }
 
-func soaRdata(r *dns.SOA) []byte {
-	return uncompressedName(r.Ns)
-}
-
 func txtRdata(r *dns.TXT) []byte {
 	var out []byte
 	for _, s := range r.Txt {

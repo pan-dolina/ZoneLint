@@ -146,12 +146,12 @@ func curveKey(c elliptic.Curve, key []byte, err error) (crypto.PublicKey, error)
 	if len(key) != (c.Params().BitSize+7)/8*2 {
 		return nil, errBadKeyLength
 	}
-	pub := &ecdsa.PublicKey{Curve: c}
-	pub.X, pub.Y = elliptic.Unmarshal(c, key)
-	if pub.X == nil || pub.Y == nil {
+	x := new(big.Int).SetBytes(key[:len(key)/2])
+	y := new(big.Int).SetBytes(key[len(key)/2:])
+	if !c.IsOnCurve(x, y) {
 		return nil, errBadKeyLength
 	}
-	return pub, nil
+	return &ecdsa.PublicKey{Curve: c, X: x, Y: y}, nil
 }
 
 func rsaKey(key []byte, err error) (crypto.PublicKey, error) {

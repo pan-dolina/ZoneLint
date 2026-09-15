@@ -5,12 +5,9 @@ import (
 	"crypto/rsa"
 	"encoding/base64"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"math/big"
 )
-
-var errBadEncoding = errors.New("dnssec: bad encoding")
 
 func decodeBase64(s string) ([]byte, error) {
 	if s == "" {
@@ -101,9 +98,4 @@ func rsaVerifyPKCS1(pub *rsa.PublicKey, h crypto.Hash, d []byte, sig []byte) err
 		return errBadSignature
 	}
 	return rsa.VerifyPKCS1v15(pub, h, d, sig)
-}
-
-// rsaSignPKCS1 signs a digest (used by tests/fixtures).
-func rsaSignPKCS1(priv *rsa.PrivateKey, h crypto.Hash, d []byte) ([]byte, error) {
-	return rsa.SignPKCS1v15(randReader(), priv, h, d)
 }

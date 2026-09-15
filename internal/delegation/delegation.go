@@ -64,7 +64,7 @@ func Compare(zone string, parent ParentView, child ChildView, now time.Time) []*
 	}
 
 	// 2. Lame delegation: child does not claim authority.
-	if child.Authoritative == false && len(child.NS) > 0 {
+	if !child.Authoritative && len(child.NS) > 0 {
 		f := findings.DelegLame.New("zone apex",
 			"The authoritative server for the zone did not respond authoritatively (AA=0) to a zone NS/SOA query.")
 		f = f.WithZone(zone)

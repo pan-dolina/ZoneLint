@@ -53,5 +53,3 @@ func TestRandomName(t *testing.T) {
 		t.Fatal("name too short")
 	}
 }
-
-type finding = findings.Finding

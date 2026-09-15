@@ -133,14 +133,6 @@ func CheckAll(zone string, records []dns.RR) []*findings.Finding {
 	return out
 }
 
-func classificationID(category string) string {
-	r, ok := classificationRule(category)
-	if !ok {
-		return findings.AddrReserved.ID
-	}
-	return r.ID
-}
-
 func classificationRule(category string) (findings.Rule, bool) {
 	switch category {
 	case "private":
