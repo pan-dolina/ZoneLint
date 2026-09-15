@@ -28,11 +28,11 @@ func TestLowTTLInfo(t *testing.T) {
 	c.Add(soaRR(10))
 	c.Add(nsRR(10))
 	fs := Check("example.test.", string(ProfileBalanced), c)
-	if !hasID(fs, findings.TTLShort) {
+	if !hasID(fs, findings.TTLShort.ID) {
 		t.Fatalf("expected low TTL info finding, got %+v", fs)
 	}
 	for _, f := range fs {
-		if f.Severity != string(findings.SeverityInfo) {
+		if f.Severity != findings.SeverityInfo {
 			t.Fatalf("expected info severity, got %s", f.Severity)
 		}
 	}
@@ -42,7 +42,7 @@ func TestExtremeTTL(t *testing.T) {
 	c := NewCollector()
 	c.Add(soaRR(1000000000))
 	fs := Check("example.test.", string(ProfileBalanced), c)
-	if !hasID(fs, findings.TTLExtreme) {
+	if !hasID(fs, findings.TTLExtreme.ID) {
 		t.Fatalf("expected extreme TTL finding, got %+v", fs)
 	}
 }
@@ -53,7 +53,7 @@ func TestWithinProfile(t *testing.T) {
 	c.Add(nsRR(3600))
 	fs := Check("example.test.", string(ProfileBalanced), c)
 	for _, f := range fs {
-		if f.Severity != string(findings.SeverityPass) {
+		if f.Severity != findings.SeverityPass {
 			t.Fatalf("expected pass, got %+v", fs)
 		}
 	}
@@ -63,11 +63,11 @@ func TestConservativeStricter(t *testing.T) {
 	c := NewCollector()
 	c.Add(soaRR(120)) // below conservative min (300) but above balanced (60)
 	fs := Check("example.test.", string(ProfileConservative), c)
-	if !hasID(fs, findings.TTLShort) {
+	if !hasID(fs, findings.TTLShort.ID) {
 		t.Fatalf("conservative should flag 120s TTL, got %+v", fs)
 	}
 	fs = Check("example.test.", string(ProfileBalanced), c)
-	if hasID(fs, findings.TTLShort) {
+	if hasID(fs, findings.TTLShort.ID) {
 		t.Fatalf("balanced should not flag 120s TTL, got %+v", fs)
 	}
 }

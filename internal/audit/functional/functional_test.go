@@ -26,12 +26,12 @@ func findID(fs []*findings.Finding, id string) bool {
 	return false
 }
 
-// maxSeverity returns the highest severity rank present.
-func maxSeverity(fs []*findings.Finding) int {
-	max := -1
+// maxSeverity returns the highest severity present.
+func maxSeverity(fs []*findings.Finding) findings.Severity {
+	var max findings.Severity
 	for _, f := range fs {
-		if r := findings.SeverityRank[findings.Severity(f.Severity)]; r > max {
-			max = r
+		if f.Severity > max {
+			max = f.Severity
 		}
 	}
 	return max
@@ -50,7 +50,7 @@ func hasID(fs []*findings.Finding, id string) bool { return findID(fs, id) }
 // 1. Healthy zone: no high/critical findings.
 func TestHealthyNoHigh(t *testing.T) {
 	res := run(t, "healthy.test.", testzones.Healthy(), audit.Options{Resolver: "fake", Profile: string(ttl.ProfileBalanced)})
-	if maxSeverity(res.Findings) >= int(findings.SeverityRank[findings.SeverityHigh]) {
+	if maxSeverity(res.Findings) >= findings.SeverityHigh {
 		t.Fatalf("healthy zone has high+ findings: %+v", res.Findings)
 	}
 }
@@ -58,7 +58,7 @@ func TestHealthyNoHigh(t *testing.T) {
 // 2. Healthy zone: DNSSEC present and valid (no missing-key/chain findings).
 func TestHealthyDNSSECValid(t *testing.T) {
 	res := run(t, "healthy.test.", testzones.Healthy(), audit.Options{Resolver: "fake"})
-	if hasID(res.Findings, findings.DNSSECNoDNSKEY) || hasID(res.Findings, findings.DNSSECNoRRSIG) {
+	if hasID(res.Findings, findings.DNSSECNoDNSKEY.ID) || hasID(res.Findings, findings.DNSSECNoRRSIG.ID) {
 		t.Fatalf("healthy zone should have valid DNSSEC: %+v", res.Findings)
 	}
 }
@@ -66,10 +66,10 @@ func TestHealthyDNSSECValid(t *testing.T) {
 // 3. AXFR allowed produces critical finding.
 func TestAXFRAllowed(t *testing.T) {
 	res := run(t, "axfr.test.", testzones.AXFRAllowed(), audit.Options{Resolver: "fake", Active: true})
-	if !hasID(res.Findings, findings.AXFRAllowed) {
+	if !hasID(res.Findings, findings.AXFRAllowed.ID) {
 		t.Fatalf("expected AXFR allowed: %+v", res.Findings)
 	}
-	if res.Findings[0].Severity != string(findings.SeverityCritical) {
+	if res.Findings[0].Severity != findings.SeverityCritical {
 		t.Fatalf("expected critical, got %s", res.Findings[0].Severity)
 	}
 }
@@ -77,10 +77,10 @@ func TestAXFRAllowed(t *testing.T) {
 // 4. AXFR denied produces pass finding, not critical.
 func TestAXFRDenied(t *testing.T) {
 	res := run(t, "axfrdenied.test.", testzones.AXFRDenied(), audit.Options{Resolver: "fake", Active: true})
-	if hasID(res.Findings, findings.AXFRAllowed) {
+	if hasID(res.Findings, findings.AXFRAllowed.ID) {
 		t.Fatalf("did not expect AXFR allowed: %+v", res.Findings)
 	}
-	if !hasID(res.Findings, findings.AXFRRefused) {
+	if !hasID(res.Findings, findings.AXFRRefused.ID) {
 		t.Fatalf("expected AXFR refused: %+v", res.Findings)
 	}
 }
@@ -88,7 +88,7 @@ func TestAXFRDenied(t *testing.T) {
 // 5. Lame delegation: parent/child NS mismatch produces high finding.
 func TestLameDelegation(t *testing.T) {
 	res := run(t, "lamedelegation.test.", testzones.LameDelegation(), audit.Options{Resolver: "fake"})
-	if maxSeverity(res.Findings) < int(findings.SeverityRank[findings.SeverityHigh]) {
+	if maxSeverity(res.Findings) < findings.SeverityHigh {
 		t.Fatalf("expected high finding for lame delegation: %+v", res.Findings)
 	}
 }
@@ -96,7 +96,7 @@ func TestLameDelegation(t *testing.T) {
 // 6. Short TTL produces info finding.
 func TestShortTTL(t *testing.T) {
 	res := run(t, "shortttl.test.", testzones.ShortTTL(), audit.Options{Resolver: "fake", Profile: string(ttl.ProfileBalanced)})
-	if !hasID(res.Findings, findings.TTLShort) {
+	if !hasID(res.Findings, findings.TTLShort.ID) {
 		t.Fatalf("expected short TTL: %+v", res.Findings)
 	}
 }
@@ -104,7 +104,7 @@ func TestShortTTL(t *testing.T) {
 // 7. Extreme TTL produces low finding.
 func TestExtremeTTL(t *testing.T) {
 	res := run(t, "extremettl.test.", testzones.ExtremeTTL(), audit.Options{Resolver: "fake", Profile: string(ttl.ProfileBalanced)})
-	if !hasID(res.Findings, findings.TTLExtreme) {
+	if !hasID(res.Findings, findings.TTLExtreme.ID) {
 		t.Fatalf("expected extreme TTL: %+v", res.Findings)
 	}
 }
@@ -112,7 +112,7 @@ func TestExtremeTTL(t *testing.T) {
 // 8. Wildcard produces info finding.
 func TestWildcard(t *testing.T) {
 	res := run(t, "wildcard.test.", testzones.Wildcard(), audit.Options{Resolver: "fake"})
-	if !hasID(res.Findings, findings.WildcardPresent) {
+	if !hasID(res.Findings, findings.WildcardPresent.ID) {
 		t.Fatalf("expected wildcard finding: %+v", res.Findings)
 	}
 }
@@ -120,7 +120,7 @@ func TestWildcard(t *testing.T) {
 // 9. CNAME loop produces high finding.
 func TestCNAMELoop(t *testing.T) {
 	res := run(t, "cnameraise.test.", testzones.CNANameLoop(), audit.Options{Resolver: "fake"})
-	if !hasID(res.Findings, findings.CNAMELoop) {
+	if !hasID(res.Findings, findings.CNAMELoop.ID) {
 		t.Fatalf("expected CNAME loop: %+v", res.Findings)
 	}
 }
@@ -128,7 +128,7 @@ func TestCNAMELoop(t *testing.T) {
 // 10. CNAME dangling produces high finding.
 func TestCNAMEDangling(t *testing.T) {
 	res := run(t, "cnameraisedangle.test.", testzones.CNDangling(), audit.Options{Resolver: "fake"})
-	if !hasID(res.Findings, findings.CNAMEDangling) {
+	if !hasID(res.Findings, findings.CNAMEDangling.ID) {
 		t.Fatalf("expected dangling: %+v", res.Findings)
 	}
 }
@@ -136,7 +136,7 @@ func TestCNAMEDangling(t *testing.T) {
 // 11. Private address produces finding.
 func TestPrivateAddr(t *testing.T) {
 	res := run(t, "privateaddr.test.", testzones.PrivateAddr(), audit.Options{Resolver: "fake"})
-	if !hasID(res.Findings, findings.AddrPrivate) {
+	if !hasID(res.Findings, findings.AddrPrivate.ID) {
 		t.Fatalf("expected private address: %+v", res.Findings)
 	}
 }
@@ -144,7 +144,7 @@ func TestPrivateAddr(t *testing.T) {
 // 12. Malformed CAA produces finding.
 func TestMalformedCAA(t *testing.T) {
 	res := run(t, "malformedcaa.test.", testzones.MalformedCAA(), audit.Options{Resolver: "fake"})
-	if !hasID(res.Findings, findings.CAACriticalUnknown) {
+	if !hasID(res.Findings, findings.CAACriticalUnknown.ID) {
 		t.Fatalf("expected CAA finding: %+v", res.Findings)
 	}
 }
@@ -152,7 +152,7 @@ func TestMalformedCAA(t *testing.T) {
 // 13. Expired DNSSEC produces finding.
 func TestExpiredDNSSEC(t *testing.T) {
 	res := run(t, "expireddnssec.test.", testzones.ExpireDNSSec(), audit.Options{Resolver: "fake"})
-	if !hasID(res.Findings, findings.DNSSECSignExpired) {
+	if !hasID(res.Findings, findings.DNSSECSignExpired.ID) {
 		t.Fatalf("expected expired signature: %+v", res.Findings)
 	}
 }
@@ -175,7 +175,7 @@ func TestBrokenDNSSEC(t *testing.T) {
 // 15. Recursion zone produces open recursion finding when active.
 func TestRecursion(t *testing.T) {
 	res := run(t, "recursion.test.", testzones.Recursion(), audit.Options{Resolver: "fake", Active: true})
-	if !hasID(res.Findings, findings.RecursionOpen) {
+	if !hasID(res.Findings, findings.RecursionOpen.ID) {
 		t.Fatalf("expected open recursion: %+v", res.Findings)
 	}
 }
@@ -183,8 +183,12 @@ func TestRecursion(t *testing.T) {
 // 16. Output is JSON-serializable and schema_version is set.
 func TestJSONOutput(t *testing.T) {
 	res := run(t, "healthy.test.", testzones.Healthy(), audit.Options{Resolver: "fake"})
+	findings := make([]findings.Finding, len(res.Findings))
+	for i, f := range res.Findings {
+		findings[i] = *f
+	}
 	var buf strings.Builder
-	err := report.Render(&buf, "healthy.test.", report.FormatJSON, report.BuildSummary(res.Findings), res.Findings, res.Queries, res.Records)
+	err := report.Render(&buf, "healthy.test.", report.FormatJSON, report.BuildSummary(findings), findings, res.Queries, res.Records)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,8 +205,8 @@ func TestJSONOutput(t *testing.T) {
 func TestFindingsSorted(t *testing.T) {
 	res := run(t, "axfr.test.", testzones.AXFRAllowed(), audit.Options{Resolver: "fake", Active: true})
 	for i := 1; i < len(res.Findings); i++ {
-		prev := findings.SeverityRank[findings.Severity(res.Findings[i-1].Severity)]
-		cur := findings.SeverityRank[findings.Severity(res.Findings[i].Severity)]
+		prev := res.Findings[i-1].Severity
+		cur := res.Findings[i].Severity
 		if prev < cur {
 			t.Fatalf("findings not sorted descending at index %d", i)
 		}
@@ -213,7 +217,7 @@ func TestFindingsSorted(t *testing.T) {
 func TestFindingsComplete(t *testing.T) {
 	res := run(t, "axfr.test.", testzones.AXFRAllowed(), audit.Options{Resolver: "fake", Active: true})
 	for _, f := range res.Findings {
-		if f.ID == "" || f.Title == "" || f.Explanation == "" {
+		if f.ID == "" || f.Title == "" || f.Description == "" {
 			t.Fatalf("finding missing fields: %+v", f)
 		}
 		if f.Zone == "" {
@@ -225,8 +229,12 @@ func TestFindingsComplete(t *testing.T) {
 // 19. No-color output is valid text.
 func TestHumanOutput(t *testing.T) {
 	res := run(t, "healthy.test.", testzones.Healthy(), audit.Options{Resolver: "fake"})
+	findings := make([]findings.Finding, len(res.Findings))
+	for i, f := range res.Findings {
+		findings[i] = *f
+	}
 	var buf strings.Builder
-	err := report.Render(&buf, "healthy.test.", report.FormatHuman, report.BuildSummary(res.Findings), res.Findings, res.Queries, res.Records)
+	err := report.Render(&buf, "healthy.test.", report.FormatHuman, report.BuildSummary(findings), findings, res.Queries, res.Records)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -238,8 +246,12 @@ func TestHumanOutput(t *testing.T) {
 // 20. SARIF output is valid SARIF 2.1.0.
 func TestSARIFOutput(t *testing.T) {
 	res := run(t, "axfr.test.", testzones.AXFRAllowed(), audit.Options{Resolver: "fake", Active: true})
+	findings := make([]findings.Finding, len(res.Findings))
+	for i, f := range res.Findings {
+		findings[i] = *f
+	}
 	var buf strings.Builder
-	err := report.Render(&buf, "axfr.test.", report.FormatSARIF, report.BuildSummary(res.Findings), res.Findings, res.Queries, res.Records)
+	err := report.Render(&buf, "axfr.test.", report.FormatSARIF, report.BuildSummary(findings), findings, res.Queries, res.Records)
 	if err != nil {
 		t.Fatal(err)
 	}

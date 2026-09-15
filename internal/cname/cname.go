@@ -48,45 +48,35 @@ func Check(zone string, g Graph, maxChain int, resolveTarget func(name string) b
 		}
 
 		if len(chain) > maxChain {
-			f := findings.New(findings.CNAMEChainLong, findings.SeverityMedium, findings.CategoryCNAME,
-				"Excessive CNAME chain")
-			f.Explanation = fmt.Sprintf("The CNAME chain from %s exceeds %d hops.", start, maxChain)
-			f.AddEvidence("chain: %s", strings.Join(chain, " -> "))
-			f.WithZone(zone)
-			f.Subject = start
-			f.Recommendation = "Shorten the CNAME chain."
-			f.References = []string{"RFC 1034 §3.6.2"}
-			out = append(out, f)
+			f := findings.CNAMEChainLong.New(start,
+				fmt.Sprintf("The CNAME chain from %s exceeds %d hops.", start, maxChain),
+				fmt.Sprintf("chain: %s", strings.Join(chain, " -> ")))
+			f = f.WithZone(zone)
+			out = append(out, &f)
 		}
 
 		// Dangling: final target does not resolve to a real record.
 		if len(chain) > 0 {
 			last := chain[len(chain)-1]
 			if !resolveTarget(last) {
-				f := findings.New(findings.CNAMEDangling, findings.SeverityHigh, findings.CategoryCNAME,
-					"Dangling CNAME target")
-				f.Explanation = "The final CNAME target does not resolve to any record; the chain is dangling (potential takeover surface)."
-				f.AddEvidence("target %s does not resolve", last)
-				f.WithZone(zone)
-				f.Subject = last
-				f.Recommendation = "Point the CNAME at a valid target or remove it."
-				f.References = []string{"RFC 1034 §3.6.2"}
-				out = append(out, f)
+				f := findings.CNAMEDangling.New(last,
+					"The final CNAME target does not resolve to any record; the chain is dangling (potential takeover surface).",
+					fmt.Sprintf("target %s does not resolve", last))
+				f = f.WithZone(zone)
+				out = append(out, &f)
 			}
 		}
 	}
 
 	// Loops are detected during walk; report once per loop root.
 	for root, loop := range loopRoots(g) {
-		f := findings.New(findings.CNAMELoop, findings.SeverityHigh, findings.CategoryCNAME,
-			"CNAME loop")
-		f.Explanation = fmt.Sprintf("A CNAME loop was detected starting at %s.", root)
-		f.AddEvidence("loop: %s", loop)
+		f := findings.CNAMELoop.New(root,
+			fmt.Sprintf("A CNAME loop was detected starting at %s.", root),
+			fmt.Sprintf("loop: %s", loop))
 		f.WithZone(zone)
 		f.Subject = root
-		f.Recommendation = "Break the CNAME cycle."
-		f.References = []string{"RFC 1034 §3.6.2"}
-		out = append(out, f)
+		f = f.WithZone(zone)
+		out = append(out, &f)
 	}
 
 	return out

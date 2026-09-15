@@ -53,7 +53,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	}
 
 	if *showVersion {
-		fmt.Fprintf(stdout, "zonelint %s\n", version.Version)
+		fmt.Fprintf(stdout, "zonelint %s\n", version.VersionString())
 		return nil
 	}
 
@@ -65,7 +65,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 
 	// Allow `zonelint version` as a shortcut for `zonelint -version`.
 	if len(domains) == 1 && domains[0] == "version" {
-		fmt.Fprintf(stdout, "zonelint %s\n", version.Version)
+		fmt.Fprintf(stdout, "zonelint %s\n", version.VersionString())
 		return nil
 	}
 
@@ -94,10 +94,10 @@ func run(args []string, stdout, stderr io.Writer) error {
 	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
 	defer cancel()
 
-	var failThreshold int
+	var failThreshold findings.Severity
 	if *failOn != "" {
-		v, ok := findings.SeverityRank[findings.Severity(strings.ToLower(*failOn))]
-		if !ok {
+		v, err := findings.ParseSeverity(strings.ToLower(*failOn))
+		if err != nil {
 			return fmt.Errorf("unknown --fail-on value %q", *failOn)
 		}
 		failThreshold = v
@@ -111,7 +111,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 		}
 		if failThreshold > 0 {
 			for _, f := range res.Findings {
-				if rank, ok := findings.SeverityRank[findings.Severity(f.Severity)]; ok && rank <= failThreshold {
+				if f.Severity >= failThreshold {
 					exitCode = 1
 					break
 				}
@@ -128,14 +128,18 @@ func run(args []string, stdout, stderr io.Writer) error {
 var errExit = fmt.Errorf("findings at or above threshold")
 
 func writeReport(stdout, stderr io.Writer, domain string, format report.Format, res *audit.Result, noColor, quiet, verbose bool) error {
-	summary := report.BuildSummary(res.Findings)
+	findings := make([]findings.Finding, len(res.Findings))
+	for i, f := range res.Findings {
+		findings[i] = *f
+	}
+	summary := report.BuildSummary(findings)
 
 	if verbose && !quiet {
 		fmt.Fprintf(stderr, "audited %s: %d queries, %d records, %d findings (%.1fms)\n",
 			domain, res.Queries, res.Records, summary.Total, float64(res.Duration.Microseconds())/1000.0)
 	}
 
-	if err := report.Render(stdout, domain, format, summary, res.Findings, res.Queries, res.Records); err != nil {
+	if err := report.Render(stdout, domain, format, summary, findings, res.Queries, res.Records); err != nil {
 		return err
 	}
 	return nil

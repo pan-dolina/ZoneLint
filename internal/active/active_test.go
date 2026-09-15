@@ -25,7 +25,7 @@ func TestOpenRecursion(t *testing.T) {
 		t.Fatalf("expected recursive, got %+v", r)
 	}
 	fs := Check("ns1.example.test.", "example.test.", r)
-	if len(fs) == 0 || fs[0].ID != findings.RecursionOpen {
+	if len(fs) == 0 || fs[0].ID != findings.RecursionOpen.ID {
 		t.Fatalf("expected open recursion finding, got %+v", fs)
 	}
 }

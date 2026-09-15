@@ -37,7 +37,7 @@ func TestInconsistentNS(t *testing.T) {
 		Authoritative: true,
 	}
 	fs := Compare("example.test.", parent, child, time.Now())
-	if !hasID(fs, findings.DelegInconsistentNS) {
+	if !hasID(fs, findings.DelegInconsistentNS.ID) {
 		t.Fatalf("expected inconsistent NS finding, got: %+v", fs)
 	}
 }
@@ -53,7 +53,7 @@ func TestLameDelegation(t *testing.T) {
 		Authoritative: false, // lame: AA=0
 	}
 	fs := Compare("example.test.", parent, child, time.Now())
-	if !hasID(fs, findings.DelegLame) {
+	if !hasID(fs, findings.DelegLame.ID) {
 		t.Fatalf("expected lame delegation finding, got: %+v", fs)
 	}
 }
@@ -70,7 +70,7 @@ func TestMissingGlue(t *testing.T) {
 		Authoritative: true,
 	}
 	fs := Compare("example.test.", parent, child, time.Now())
-	if !hasID(fs, findings.DelegMissingGlue) {
+	if !hasID(fs, findings.DelegMissingGlue.ID) {
 		t.Fatalf("expected missing glue finding, got: %+v", fs)
 	}
 }
@@ -91,7 +91,7 @@ func TestHealthyDelegation(t *testing.T) {
 	}
 	fs := Compare("example.test.", parent, child, time.Now())
 	for _, f := range fs {
-		if f.Severity != string(findings.SeverityPass) {
+		if f.Severity != findings.SeverityPass {
 			t.Fatalf("expected only pass findings, got %+v", fs)
 		}
 	}

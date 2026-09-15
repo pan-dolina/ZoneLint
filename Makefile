@@ -3,7 +3,7 @@
 GO ?= go
 BIN := dist/zonelint
 
-.PHONY: all build test race lint fmt vet fuzz-bench clean
+.PHONY: all build test race lint fmt vet fuzz-bench clean release check-deps
 
 all: build
 
@@ -35,6 +35,12 @@ govulncheck:
 	govulncheck ./...
 
 lint: vet staticcheck gosec govulncheck
+
+check-deps:
+	scripts/check-dependencies.sh
+
+release:
+	scripts/build-release.sh
 
 clean:
 	rm -rf dist/

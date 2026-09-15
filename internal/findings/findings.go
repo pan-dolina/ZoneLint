@@ -1,141 +1,218 @@
-// Package findings defines the core data model for ZoneLint audit results:
-// Finding, Severity, and stable Finding IDs.
+// Package findings defines the finding model shared by all ZoneLint checks.
 //
-// Every finding carries a stable ID (e.g. DNS-DELEGATION-001) so that
-// downstream tooling and golden tests can rely on deterministic output.
+// A Finding is a single observation about a DNS zone. Findings are
+// instantiated from Rules, which live in a central catalog so that finding
+// IDs remain stable between releases. A rule that is no longer emitted stays
+// in the catalog with a "Deprecated:" title prefix.
 package findings
 
 import (
+	"cmp"
 	"fmt"
-	"sort"
+	"slices"
+	"strings"
 )
 
-// Severity is the impact rating of a Finding.
-type Severity string
+// Severity ranks findings. The zero value is invalid.
+type Severity int
 
+// Severities in ascending order.
 const (
-	SeverityCritical Severity = "critical"
-	SeverityHigh     Severity = "high"
-	SeverityMedium   Severity = "medium"
-	SeverityLow      Severity = "low"
-	SeverityInfo     Severity = "info"
-	SeverityPass     Severity = "pass"
+	SeverityPass Severity = iota + 1
+	SeverityInfo
+	SeverityLow
+	SeverityMedium
+	SeverityHigh
+	SeverityCritical
 )
 
-// SeverityRank orders severities for aggregation and fail-on thresholds.
-var SeverityRank = map[Severity]int{
-	SeverityPass:     0,
-	SeverityInfo:     1,
-	SeverityLow:      2,
-	SeverityMedium:   3,
-	SeverityHigh:     4,
-	SeverityCritical: 5,
+var severityNames = map[Severity]string{
+	SeverityPass:     "pass",
+	SeverityInfo:     "info",
+	SeverityLow:      "low",
+	SeverityMedium:   "medium",
+	SeverityHigh:     "high",
+	SeverityCritical: "critical",
 }
 
-// IsAtLeast reports whether s meets or exceeds min.
-func (s Severity) IsAtLeast(min Severity) bool {
-	return SeverityRank[s] >= SeverityRank[min]
+// Severities returns all severities from most to least severe.
+func Severities() []Severity {
+	return []Severity{SeverityCritical, SeverityHigh, SeverityMedium, SeverityLow, SeverityInfo, SeverityPass}
 }
 
-// Category groups findings by the subsystem that produced them.
+func (s Severity) String() string {
+	if n, ok := severityNames[s]; ok {
+		return n
+	}
+	return fmt.Sprintf("Severity(%d)", int(s))
+}
+
+// Valid reports whether s is a defined severity.
+func (s Severity) Valid() bool {
+	_, ok := severityNames[s]
+	return ok
+}
+
+// ParseSeverity parses a severity name case-insensitively.
+func ParseSeverity(name string) (Severity, error) {
+	for s, n := range severityNames {
+		if strings.EqualFold(n, name) {
+			return s, nil
+		}
+	}
+	return 0, fmt.Errorf("unknown severity %q", name)
+}
+
+// Category classifies the nature of a finding independently of its severity.
 type Category string
 
+// Categories.
 const (
-	CategoryDelegation Category = "delegation"
-	CategoryAuthServer Category = "authserver"
-	CategorySOA        Category = "soa"
-	CategoryAXFR       Category = "axfr"
-	CategoryDNSSEC     Category = "dnssec"
-	CategoryTTL        Category = "ttl"
-	CategoryCAA        Category = "caa"
-	CategoryCNAME      Category = "cname"
-	CategoryAddress    Category = "address"
-	CategoryWildcard   Category = "wildcard"
-	CategoryRecursion  Category = "recursion"
-	CategoryTransport  Category = "transport"
-	CategoryGeneral    Category = "general"
+	// CategoryViolation: the configuration violates a standard.
+	CategoryViolation Category = "standard-violation"
+	// CategoryWeakness: standards-compliant but exploitable or ineffective.
+	CategoryWeakness Category = "security-weakness"
+	// CategoryHardening: an improvement beyond the minimum requirements.
+	CategoryHardening Category = "hardening"
+	// CategoryInformational: context that needs no action, including passes.
+	CategoryInformational Category = "informational"
 )
 
-// Finding is a single audit result.
+// Component identifies the subsystem a finding belongs to.
+type Component string
+
+// Components.
+const (
+	ComponentDelegation Component = "delegation"
+	ComponentAuthServer Component = "authserver"
+	ComponentSOA        Component = "soa"
+	ComponentAXFR       Component = "axfr"
+	ComponentDNSSEC     Component = "dnssec"
+	ComponentTTL        Component = "ttl"
+	ComponentCAA        Component = "caa"
+	ComponentCNAME      Component = "cname"
+	ComponentAddress    Component = "address"
+	ComponentWildcard   Component = "wildcard"
+	ComponentRecursion  Component = "recursion"
+	ComponentTransport  Component = "transport"
+	ComponentGeneral    Component = "general"
+)
+
+// Rule is the static definition of a finding type.
+type Rule struct {
+	ID             string
+	Component      Component
+	Category       Category
+	Severity       Severity
+	Title          string
+	Recommendation string
+	References     []string
+}
+
+// Finding is a concrete observation.
 type Finding struct {
-	ID             string   `json:"id"`
-	Severity       string   `json:"severity"`
-	Category       string   `json:"category"`
-	Title          string   `json:"title"`
-	Explanation    string   `json:"explanation"`
-	Evidence       []string `json:"evidence"`
-	Recommendation string   `json:"recommendation"`
-	References     []string `json:"references"`
-	Zone           string   `json:"zone,omitempty"`
-	Subject        string   `json:"subject,omitempty"`
+	ID             string    `json:"id"`
+	Severity       Severity  `json:"severity"`
+	Category       Category  `json:"category"`
+	Component      Component `json:"component"`
+	Title          string    `json:"title"`
+	Subject        string    `json:"subject,omitempty"`
+	Description    string    `json:"description"`
+	Evidence       []string  `json:"evidence,omitempty"`
+	Recommendation string    `json:"recommendation,omitempty"`
+	References     []string  `json:"references,omitempty"`
+	Zone           string    `json:"zone,omitempty"`
 }
 
-// AddEvidence appends non-empty evidence strings.
-func (f *Finding) AddEvidence(format string, args ...any) {
-	var s string
-	if len(args) == 0 {
-		s = format
-	} else {
-		s = fmt.Sprintf(format, args...)
-	}
-	if s != "" {
-		f.Evidence = append(f.Evidence, s)
+// New instantiates a finding from the rule. Subject names the object the
+// finding is about (a domain, a DNS name, an address); it may be empty.
+func (r Rule) New(subject, description string, evidence ...string) Finding {
+	return Finding{
+		ID:             r.ID,
+		Severity:       r.Severity,
+		Category:       r.Category,
+		Component:      r.Component,
+		Title:          r.Title,
+		Subject:        subject,
+		Description:    description,
+		Evidence:       slices.Clone(evidence),
+		Recommendation: r.Recommendation,
+		References:     slices.Clone(r.References),
 	}
 }
 
-// WithZone sets the zone context on a copy-safe basis (mutates in place).
-func (f *Finding) WithZone(zone string) *Finding {
+// WithSeverity returns a copy of f with a different severity. Rules define a
+// default; context can make the same condition more or less severe.
+func (f Finding) WithSeverity(s Severity) Finding {
+	f.Severity = s
+	return f
+}
+
+// WithSeverity returns a copy of the rule's finding with a different severity.
+// Rules define a default; context can make the same condition more or less
+// severe.
+func (r Rule) WithSeverity(s Severity) Rule {
+	r.Severity = s
+	return r
+}
+
+// WithEvidence returns a copy of f with additional evidence lines.
+func (f Finding) WithEvidence(evidence ...string) Finding {
+	f.Evidence = append(slices.Clone(f.Evidence), evidence...)
+	return f
+}
+
+// WithZone sets the zone context.
+func (f Finding) WithZone(zone string) Finding {
 	f.Zone = zone
 	return f
 }
 
-// WithSubject sets the subject (host, record, address) a finding concerns.
-func (f *Finding) WithSubject(subject string) *Finding {
-	f.Subject = subject
-	return f
+// Sort orders findings deterministically: most severe first, then by ID,
+// subject, description and evidence.
+func Sort(fs []Finding) {
+	slices.SortStableFunc(fs, Compare)
 }
 
-// New builds a Finding, guarding against nil evidence slices.
-func New(id string, sev Severity, cat Category, title string) *Finding {
-	return &Finding{
-		ID:         id,
-		Severity:   string(sev),
-		Category:   string(cat),
-		Title:      title,
-		Evidence:   []string{},
-		References: []string{},
-	}
+// Compare implements the ordering used by Sort.
+func Compare(a, b Finding) int {
+	return cmp.Or(
+		cmp.Compare(b.Severity, a.Severity),
+		cmp.Compare(a.ID, b.ID),
+		cmp.Compare(a.Subject, b.Subject),
+		cmp.Compare(a.Description, b.Description),
+		slices.Compare(a.Evidence, b.Evidence),
+	)
 }
 
-// Sorted returns findings ordered by severity rank (descending), then ID.
-func Sorted(fs []*Finding) []*Finding {
-	out := make([]*Finding, len(fs))
-	copy(out, fs)
-	sort.SliceStable(out, func(i, j int) bool {
-		if SeverityRank[Severity(out[i].Severity)] != SeverityRank[Severity(out[j].Severity)] {
-			return SeverityRank[Severity(out[i].Severity)] > SeverityRank[Severity(out[j].Severity)]
-		}
-		return out[i].ID < out[j].ID
-	})
-	return out
-}
-
-// MaxSeverity returns the highest severity present, or "" if empty.
-func MaxSeverity(fs []*Finding) Severity {
-	var max Severity
+// Max returns the highest severity in fs, or 0 if fs is empty.
+func Max(fs []Finding) Severity {
+	var m Severity
 	for _, f := range fs {
-		if max == "" || SeverityRank[Severity(f.Severity)] > SeverityRank[max] {
-			max = Severity(f.Severity)
-		}
+		m = max(m, f.Severity)
 	}
-	return max
+	return m
 }
 
-// CountBySeverity tallies findings per severity.
-func CountBySeverity(fs []*Finding) map[Severity]int {
-	out := map[Severity]int{}
+// Counts tallies findings by severity name. All severities are present.
+func Counts(fs []Finding) map[string]int {
+	c := make(map[string]int, len(severityNames))
+	for _, n := range severityNames {
+		c[n] = 0
+	}
 	for _, f := range fs {
-		out[Severity(f.Severity)]++
+		c[f.Severity.String()]++
+	}
+	return c
+}
+
+// AtLeast returns the findings whose severity is >= threshold.
+func AtLeast(fs []Finding, threshold Severity) []Finding {
+	var out []Finding
+	for _, f := range fs {
+		if f.Severity >= threshold {
+			out = append(out, f)
+		}
 	}
 	return out
 }

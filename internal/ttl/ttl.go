@@ -4,6 +4,7 @@
 package ttl
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/miekg/dns"
@@ -92,25 +93,17 @@ func Check(zone, profile string, c *Collector) []*findings.Finding {
 			continue
 		}
 		if t > extremeTTL {
-			f := findings.New(findings.TTLExtreme, findings.SeverityLow, findings.CategoryTTL,
-				"Extreme TTL")
-			f.Explanation = "A very high TTL reduces operational agility and delays propagation of legitimate changes."
-			f.AddEvidence("%s TTL=%d (limit %d)", dnsTypeString(typ), t, extremeTTL)
-			f.WithZone(zone)
-			f.Recommendation = "Consider a lower TTL if the record changes frequently."
-			f.References = []string{"RFC 1982", "best practice"}
-			out = append(out, f)
+			f := findings.TTLExtreme.New(zone,
+				"A very high TTL reduces operational agility and delays propagation of legitimate changes.",
+				fmt.Sprintf("%s TTL=%d (limit %d)", dnsTypeString(typ), t, extremeTTL))
+			out = append(out, &f)
 			continue
 		}
 		if t < minTTL {
-			f := findings.New(findings.TTLShort, findings.SeverityInfo, findings.CategoryTTL,
-				"Low TTL")
-			f.Explanation = "A low TTL is an operational/resilience heuristic: it improves propagation agility but increases query load and reduces cache efficiency. It is not reported as a vulnerability."
-			f.AddEvidence("%s TTL=%d (profile minimum %d)", dnsTypeString(typ), t, minTTL)
-			f.WithZone(zone)
-			f.Recommendation = "Confirm the low TTL is intentional; raise it if caching efficiency matters more."
-			f.References = []string{"RFC 1912", "operational best practice"}
-			out = append(out, f)
+			f := findings.TTLShort.New(zone,
+				"A low TTL is an operational/resilience heuristic: it improves propagation agility but increases query load and reduces cache efficiency. It is not reported as a vulnerability.",
+				fmt.Sprintf("%s TTL=%d (profile minimum %d)", dnsTypeString(typ), t, minTTL))
+			out = append(out, &f)
 		}
 	}
 	return out

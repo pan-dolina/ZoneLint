@@ -34,7 +34,7 @@ func TestValidNSEC(t *testing.T) {
 	a := Analyze([]dns.RR{rr})
 	fs := Check("example.test.", a)
 	for _, f := range fs {
-		if f.ID == findings.DNSSECNoNSEC {
+		if f.ID == findings.DNSSECNoNSEC.ID {
 			t.Fatal("NSEC present should not flag no-NSEC")
 		}
 	}
@@ -42,7 +42,7 @@ func TestValidNSEC(t *testing.T) {
 
 func hasNoNSEC(fs []*finding) bool {
 	for _, f := range fs {
-		if f.ID == findings.DNSSECNoNSEC {
+		if f.ID == findings.DNSSECNoNSEC.ID {
 			return true
 		}
 	}
@@ -51,7 +51,7 @@ func hasNoNSEC(fs []*finding) bool {
 
 func hasMalformed(fs []*finding) bool {
 	for _, f := range fs {
-		if f.ID == findings.DNSSECMalformedNSEC3 {
+		if f.ID == findings.DNSSECMalformedNSEC3.ID {
 			return true
 		}
 	}

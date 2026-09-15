@@ -191,7 +191,7 @@ func uncompressedName(n string) []byte {
 		if len(label) > 63 {
 			label = label[:63]
 		}
-		out = append(out, byte(len(label)))
+		out = append(out, byte(len(label))) //#nosec G115 -- label length is bounded to 63 by the check above
 		out = append(out, label...)
 	}
 	return append(out, 0x00)
@@ -215,7 +215,7 @@ func txtRdata(r *dns.TXT) []byte {
 		if len(s) > 255 {
 			s = s[:255]
 		}
-		out = append(out, byte(len(s)))
+		out = append(out, byte(len(s))) //#nosec G115 -- name length is bounded to 255 by the check above
 		out = append(out, s...)
 	}
 	return out
@@ -227,7 +227,7 @@ func caaRdata(r *dns.CAA) []byte {
 	if len(tag) > 63 {
 		tag = tag[:63]
 	}
-	out = append(out, byte(len(tag)))
+	out = append(out, byte(len(tag))) //#nosec G115 -- CAA tag length is bounded to 63 by the check above
 	out = append(out, tag...)
 	return append(out, r.Value...)
 }

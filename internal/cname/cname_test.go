@@ -43,7 +43,7 @@ func TestHealthyChain(t *testing.T) {
 	})
 	fs := Check("example.test.", g, 8, func(string) bool { return true })
 	for _, f := range fs {
-		if f.Severity != "pass" {
+		if f.Severity != findings.SeverityPass {
 			t.Fatalf("expected pass, got %+v", fs)
 		}
 	}

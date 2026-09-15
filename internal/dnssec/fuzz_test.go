@@ -38,7 +38,12 @@ func FuzzParseDNSKEY(f *testing.F) {
 // FuzzKeyTag fuzzes key tag computation stability.
 func FuzzKeyTag(f *testing.F) {
 	f.Fuzz(func(t *testing.T, flags uint16, algo uint8, keyLen int) {
-		key := make([]byte, keyLen%64)
+		// Bound the key length to a sane range to avoid huge allocations.
+		if keyLen < 0 {
+			keyLen = -keyLen
+		}
+		keyLen %= 128
+		key := make([]byte, keyLen)
 		_, _ = rand.Read(key)
 		_ = KeyTag(flags, algo, key)
 	})

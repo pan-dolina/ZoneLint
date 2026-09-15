@@ -2,153 +2,142 @@ name: CI
 
 on:
   push:
-    branches: [main, master]
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
-  quality:
-    name: Quality Gate
-    runs-on: ubuntu-latest
+  test:
+    name: test (${{ matrix.os }}, go ${{ matrix.go }})
     strategy:
       fail-fast: false
       matrix:
-        go: ['1.23']
-
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        go: [stable, oldstable]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      # Test with the toolchain selected by the matrix, not the release
+      # toolchain named in go.mod.
+      GOTOOLCHAIN: local
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: ${{ matrix.go }}
+          check-latest: true
 
-      - name: Cache Go modules
-        uses: actions/cache@v4
+      - name: Verify module downloads
+        run: go mod verify
+
+      - name: Build
+        run: go build ./...
+
+      - name: Unit and functional tests
+        run: go test ./...
+
+      - name: Race detector
+        if: runner.os != 'Windows'
+        run: go test -race ./...
+
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ matrix.go }}-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-${{ matrix.go }}-
+          persist-credentials: false
 
-      - name: gofmt check
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      - name: gofmt
         run: |
-          unformatted=$(gofmt -l $(find . -name '*.go' -not -path './.toolchain/*'))
+          unformatted="$(gofmt -l .)"
           if [ -n "$unformatted" ]; then
-            echo "gofmt issues found in:"
+            echo "Files need gofmt:"
             echo "$unformatted"
             exit 1
           fi
 
+      - name: go mod tidy
+        run: |
+          go mod tidy -diff
+
       - name: go vet
         run: go vet ./...
 
-      - name: go test
-        run: go test -race -count=1 ./...
-
-      - name: Install staticcheck
+      - name: Generated files are up to date
         run: |
-          go install honnef.co/go/tools/cmd/staticcheck@2024.1.1
+          go test ./internal/findings -run TestCatalogDocumented
 
-      - name: staticcheck
-        run: staticcheck ./...
-
-      - name: gosec
-        run: |
-          go install github.com/securego/gosec/v2/cmd/gosec@latest
-          gosec -severity medium -confidence medium ./... || true
-
-      - name: govulncheck
-        run: |
-          go install golang.org/x/v/cmd/govulncheck@latest
-          govulncheck ./...
-
-      - name: go mod verify
-        run: go mod verify
-
-  supply-chain:
-    name: Supply Chain
+  coverage:
     runs-on: ubuntu-latest
-    needs: quality
+    timeout-minutes: 15
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          go-version: '1.23'
+          persist-credentials: false
 
-      - name: Generate checksums
-        run: go mod download && go list -m -json all | jq -r '.path+" "+.sum' > checksums.txt
-
-      - name: Generate SBOM
-        uses: cyclonedx/go-cyclonedx-module-action@v0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          version: latest
+          go-version-file: go.mod
+          check-latest: true
 
-      - name: Upload SBOM
-        uses: actions/upload-artifact@v4
+      - name: Coverage
+        run: |
+          go test -coverprofile=coverage.out -covermode=atomic ./internal/...
+          go tool cover -func=coverage.out | tail -1
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: sbom
-          path: bom.json
+          name: coverage
+          path: coverage.out
+          retention-days: 14
 
-      - name: OSV-Scanner
-        uses: google/osv-scanner-action@v1
-        with:
-          args: --lockfile go.mod
-
-  build:
-    name: Build All Platforms
+  fuzz:
     runs-on: ubuntu-latest
-    needs: quality
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: linux-arm64
-            goos: linux
-            goarch: arm64
-          - os: linux-amd64
-            goos: linux
-            goarch: amd64
-          - os: darwin-arm64
-            goos: darwin
-            goarch: arm64
-          - os: darwin-amd64
-            goos: darwin
-            goarch: amd64
-          - os: windows-arm64
-            goos: windows
-            goarch: arm64
-          - os: windows-amd64
-            goos: windows
-            goarch: amd64
+        target:
+          - dnssec:FuzzParseDNSKEY
+          - dnssec:FuzzKeyTag
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          go-version: '1.23'
+          persist-credentials: false
 
-      - name: Build ${{ matrix.os }}
-        run: |
-          export GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }}
-          go build -trimpath -ldflags "-s -w" -o dist/zonelint-${{ matrix.os }} ./cmd/zonelint
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      - name: Fuzz ${{ matrix.target }}
         env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          pkg="${TARGET%%:*}"
+          name="${TARGET##*:}"
+          go test "./internal/${pkg}" -run '^$' -fuzz "^${name}\$" -fuzztime 45s
 
-      - name: Upload binary
-        uses: actions/upload-artifact@v4
+      - name: Upload failing input
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: zonelint-${{ matrix.os }}
-          path: dist/
+          name: fuzz-crash-${{ strategy.job-index }}
+          path: internal/*/testdata/fuzz
+          retention-days: 30

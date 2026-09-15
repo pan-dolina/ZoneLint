@@ -4,6 +4,7 @@
 package axfr
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/miekg/dns"
@@ -39,29 +40,19 @@ func Evaluate(zone, server string, o *Outcome) []*findings.Finding {
 	}
 	switch o.Status {
 	case "allowed":
-		f := findings.New(findings.AXFRAllowed, findings.SeverityCritical, findings.CategoryAXFR,
-			"Zone transfer (AXFR) allowed")
-		f.Explanation = "The authoritative server accepted an AXFR request and exposed the full zone contents."
-		f.AddEvidence("server %s returned %d records", server, o.RecordCount)
-		f.WithZone(zone)
-		f.Subject = server
-		f.Recommendation = "Restrict AXFR to trusted secondary servers only (allow-transfer)."
-		f.References = []string{"RFC 1969", "RFC 5936"}
-		out = append(out, f)
+		f := findings.AXFRAllowed.New(server,
+			"The authoritative server accepted an AXFR request and exposed the full zone contents.",
+			fmt.Sprintf("server %s returned %d records", server, o.RecordCount))
+		f = f.WithZone(zone)
+		out = append(out, &f)
 	case "refused":
-		f := findings.New(findings.AXFRRefused, findings.SeverityPass, findings.CategoryAXFR,
-			"Zone transfer refused (good)")
-		f.Explanation = "The server refused AXFR, which is the secure default."
-		f.WithZone(zone)
-		f.Subject = server
-		out = append(out, f)
+		f := findings.AXFRRefused.New(server, "The server refused AXFR, which is the secure default.")
+		f = f.WithZone(zone)
+		out = append(out, &f)
 	case "failed":
-		f := findings.New(findings.AXFRFailed, findings.SeverityInfo, findings.CategoryAXFR,
-			"Zone transfer failed")
-		f.Explanation = "The AXFR request failed (timeout, format error, or server error)."
-		f.WithZone(zone)
-		f.Subject = server
-		out = append(out, f)
+		f := findings.AXFRFailed.New(server, "The AXFR request failed (timeout, format error, or server error).")
+		f = f.WithZone(zone)
+		out = append(out, &f)
 	}
 	return out
 }

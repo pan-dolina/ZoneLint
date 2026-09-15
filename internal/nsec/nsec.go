@@ -3,6 +3,8 @@
 package nsec
 
 import (
+	"fmt"
+
 	"github.com/miekg/dns"
 
 	"github.com/example/ZoneLint/internal/findings"
@@ -44,23 +46,15 @@ func Analyze(records []dns.RR) *Assessment {
 func Check(zone string, a *Assessment) []*findings.Finding {
 	var out []*findings.Finding
 	if !a.HasNSEC && !a.HasNSEC3 {
-		f := findings.New(findings.DNSSECNoNSEC, findings.SeverityLow, findings.CategoryDNSSEC,
-			"No NSEC/NSEC3 records")
-		f.Explanation = "The zone does not publish NSEC or NSEC3 records; NSEC/NSEC3 provides authenticated denial of existence."
-		f.WithZone(zone)
-		f.Recommendation = "Enable NSEC or NSEC3 for authenticated denial of existence."
-		f.References = []string{"RFC 4034", "RFC 5155"}
-		out = append(out, f)
+		f := findings.DNSSECNoNSEC.New(zone,
+			"The zone does not publish NSEC or NSEC3 records; NSEC/NSEC3 provides authenticated denial of existence.")
+		out = append(out, &f)
 	}
 	if a.Malformed {
-		f := findings.New(findings.DNSSECMalformedNSEC3, findings.SeverityMedium, findings.CategoryDNSSEC,
-			"Malformed NSEC3 parameters")
-		f.Explanation = "NSEC3 has zero or excessive iterations, or no salt, which weakens or breaks the hash."
-		f.AddEvidence("iterations=%d salt_length=%d", a.NSEC3Iter, a.NSEC3Salt)
-		f.WithZone(zone)
-		f.Recommendation = "Use a reasonable iteration count (e.g. >= 1500) and a salt."
-		f.References = []string{"RFC 5155 §4.2"}
-		out = append(out, f)
+		f := findings.DNSSECMalformedNSEC3.New(zone,
+			"NSEC3 has zero or excessive iterations, or no salt, which weakens or breaks the hash.",
+			fmt.Sprintf("iterations=%d salt_length=%d", a.NSEC3Iter, a.NSEC3Salt))
+		out = append(out, &f)
 	}
 	return out
 }

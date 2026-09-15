@@ -4,6 +4,7 @@
 package addrs
 
 import (
+	"fmt"
 	"net"
 
 	"github.com/miekg/dns"
@@ -14,7 +15,7 @@ import (
 // Classification describes the category of an address.
 type Classification struct {
 	Category string
-	Severity string
+	Severity findings.Severity
 	Reason   string
 }
 
@@ -35,21 +36,21 @@ func Classify(ip net.IP) *Classification {
 func classifyV4(ip net.IP) *Classification {
 	switch {
 	case isLoopbackV4(ip):
-		return &Classification{Category: "loopback", Severity: string(findings.SeverityMedium), Reason: "IPv4 loopback 127.0.0.0/8"}
+		return &Classification{Category: "loopback", Severity: findings.SeverityMedium, Reason: "IPv4 loopback 127.0.0.0/8"}
 	case isPrivateV4(ip, 10):
-		return &Classification{Category: "private", Severity: string(findings.SeverityMedium), Reason: "RFC1918 10.0.0.0/8"}
+		return &Classification{Category: "private", Severity: findings.SeverityMedium, Reason: "RFC1918 10.0.0.0/8"}
 	case isPrivateV4(ip, 172):
-		return &Classification{Category: "private", Severity: string(findings.SeverityMedium), Reason: "RFC1918 172.16.0.0/12"}
+		return &Classification{Category: "private", Severity: findings.SeverityMedium, Reason: "RFC1918 172.16.0.0/12"}
 	case isPrivateV4(ip, 192):
-		return &Classification{Category: "private", Severity: string(findings.SeverityMedium), Reason: "RFC1918 192.168.0.0/16"}
+		return &Classification{Category: "private", Severity: findings.SeverityMedium, Reason: "RFC1918 192.168.0.0/16"}
 	case ip[0] == 169 && ip[1] == 254:
-		return &Classification{Category: "link-local", Severity: string(findings.SeverityLow), Reason: "link-local 169.254.0.0/16"}
+		return &Classification{Category: "link-local", Severity: findings.SeverityLow, Reason: "link-local 169.254.0.0/16"}
 	case isDocV4(ip):
-		return &Classification{Category: "documentation", Severity: string(findings.SeverityLow), Reason: "documentation 198.51.100.0/24 / 203.0.113.0/24"}
+		return &Classification{Category: "documentation", Severity: findings.SeverityLow, Reason: "documentation 198.51.100.0/24 / 203.0.113.0/24"}
 	case ip[0] == 192 && ip[1] == 0 && ip[2] == 0 && ip[3] == 2:
-		return &Classification{Category: "reserved", Severity: string(findings.SeverityLow), Reason: "reserved 192.0.0.0/24"}
+		return &Classification{Category: "reserved", Severity: findings.SeverityLow, Reason: "reserved 192.0.0.0/24"}
 	case ip[0] >= 224:
-		return &Classification{Category: "reserved", Severity: string(findings.SeverityLow), Reason: "reserved/multicast/unicast-multicast"}
+		return &Classification{Category: "reserved", Severity: findings.SeverityLow, Reason: "reserved/multicast/unicast-multicast"}
 	}
 	return nil
 }
@@ -57,13 +58,13 @@ func classifyV4(ip net.IP) *Classification {
 func classifyV6(ip net.IP) *Classification {
 	switch {
 	case isLoopbackV6(ip):
-		return &Classification{Category: "loopback", Severity: string(findings.SeverityMedium), Reason: "IPv6 loopback ::1"}
+		return &Classification{Category: "loopback", Severity: findings.SeverityMedium, Reason: "IPv6 loopback ::1"}
 	case isUniqueLocalV6(ip):
-		return &Classification{Category: "private", Severity: string(findings.SeverityMedium), Reason: "IPv6 unique-local fc00::/7"}
+		return &Classification{Category: "private", Severity: findings.SeverityMedium, Reason: "IPv6 unique-local fc00::/7"}
 	case isLinkLocalV6(ip):
-		return &Classification{Category: "link-local", Severity: string(findings.SeverityLow), Reason: "IPv6 link-local fe80::/10"}
+		return &Classification{Category: "link-local", Severity: findings.SeverityLow, Reason: "IPv6 link-local fe80::/10"}
 	case isUnspecifiedV6(ip):
-		return &Classification{Category: "reserved", Severity: string(findings.SeverityLow), Reason: "IPv6 unspecified ::"}
+		return &Classification{Category: "reserved", Severity: findings.SeverityLow, Reason: "IPv6 unspecified ::"}
 	}
 	return nil
 }
@@ -120,33 +121,40 @@ func CheckAll(zone string, records []dns.RR) []*findings.Finding {
 				continue
 			}
 			seen[key] = true
-			f := findings.New(classificationID(c.Category), findings.Severity(c.Severity), findings.CategoryAddress,
-				"Public record points to "+c.Category+" address")
-			f.Explanation = c.Reason
-			f.AddEvidence("address %s", ip.String())
-			f.WithZone(zone)
-			f.Recommendation = "Public records should not resolve to private/reserved addresses unless intended."
-			f.References = []string{"RFC 1918", "RFC 6890"}
-			out = append(out, f)
+			rule, ok := classificationRule(c.Category)
+			if !ok {
+				continue
+			}
+			f := rule.New(ip.String(), c.Reason, fmt.Sprintf("address %s", ip.String()))
+			f = f.WithZone(zone)
+			out = append(out, &f)
 		}
 	}
 	return out
 }
 
 func classificationID(category string) string {
+	r, ok := classificationRule(category)
+	if !ok {
+		return findings.AddrReserved.ID
+	}
+	return r.ID
+}
+
+func classificationRule(category string) (findings.Rule, bool) {
 	switch category {
 	case "private":
-		return findings.AddrPrivate
+		return findings.AddrPrivate, true
 	case "loopback":
-		return findings.AddrLoopback
+		return findings.AddrLoopback, true
 	case "link-local":
-		return findings.AddrLocal
+		return findings.AddrLocal, true
 	case "reserved":
-		return findings.AddrReserved
+		return findings.AddrReserved, true
 	case "documentation":
-		return findings.AddrDocumentation
+		return findings.AddrDocumentation, true
 	}
-	return findings.AddrReserved
+	return findings.Rule{}, false
 }
 
 func dnsutilAddrs(rr dns.RR) []net.IP {

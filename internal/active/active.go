@@ -6,6 +6,7 @@ package active
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 
 	"github.com/miekg/dns"
 
@@ -41,15 +42,11 @@ func Check(server, zone string, r *RecursionResult) []*findings.Finding {
 	if r == nil || !r.Recursive {
 		return out
 	}
-	f := findings.New(findings.RecursionOpen, findings.SeverityHigh, findings.CategoryRecursion,
-		"Open recursion on authoritative server")
-	f.Explanation = "The authoritative server answers recursive queries for arbitrary names, exposing it as an open resolver."
-	f.AddEvidence("server %s answered recursion with %d query(s)", server, r.QueriesSent)
-	f.WithZone(zone)
-	f.Subject = server
-	f.Recommendation = "Disable recursion on authoritative servers; restrict to trusted clients."
-	f.References = []string{"CVE-relevant open resolver guidance", "RFC 1996"}
-	out = append(out, f)
+	f := findings.RecursionOpen.New(server,
+		"The authoritative server answers recursive queries for arbitrary names, exposing it as an open resolver.",
+		fmt.Sprintf("server %s answered recursion with %d query(s)", server, r.QueriesSent))
+	f = f.WithZone(zone)
+	out = append(out, &f)
 	return out
 }
 

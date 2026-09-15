@@ -107,8 +107,8 @@ func (r *Runner) Run(ctx context.Context) *Result {
 	req := dnsutil.SafeNewMsg(r.zone, dns.TypeNS)
 	resp, err := r.query(ctx, req)
 	if err != nil {
-		res.AddFinding(findings.New(findings.GeneralError, findings.SeverityHigh, findings.CategoryGeneral,
-			"Initial resolution failed"), r.zone)
+		f := findings.GeneralError.New(r.zone, "Initial resolution failed.")
+		res.AddFinding(&f)
 		res.Duration = time.Since(start)
 		return res
 	}
@@ -138,7 +138,7 @@ func (r *Runner) Run(ctx context.Context) *Result {
 		child = delegation.ExtractChildFromResponse(childNSResp, childZoneName)
 		child.Authoritative = childNSResp.Authoritative
 		for _, f := range delegation.Compare(r.zone, parent, child, time.Now()) {
-			res.AddFinding(f, r.zone)
+			res.AddFinding(f)
 		}
 	}
 
@@ -155,7 +155,7 @@ func (r *Runner) Run(ctx context.Context) *Result {
 			pr := authserver.ProbeResponse(nsResp)
 			pr.UDPReachable = true
 			for _, f := range authserver.CheckServer(r.zone, nsHost, pr) {
-				res.AddFinding(f, r.zone)
+				res.AddFinding(f)
 			}
 			break
 		}
@@ -164,36 +164,36 @@ func (r *Runner) Run(ctx context.Context) *Result {
 	// 3. SOA check.
 	if soaRec := dnsutil.SOA(resp.Answer); soaRec != nil {
 		for _, f := range soa.Check(r.zone, soaRec) {
-			res.AddFinding(f, r.zone)
+			res.AddFinding(f)
 		}
 	}
 
 	// 4. TTL check.
 	for _, f := range ttl.Check(r.zone, r.opt.Profile, c) {
-		res.AddFinding(f, r.zone)
+		res.AddFinding(f)
 	}
 
 	// 5. CAA check.
 	for _, f := range caa.Check(r.zone, dnsutil.RRsOfType(apexRecords, dns.TypeCAA)) {
-		res.AddFinding(f, r.zone)
+		res.AddFinding(f)
 	}
 
 	// 6. Address classification.
 	for _, f := range addrs.CheckAll(r.zone, apexRecords) {
-		res.AddFinding(f, r.zone)
+		res.AddFinding(f)
 	}
 
 	// 7. CNAME check.
 	cgraph := cname.Build(apexRecords)
 	resolveTarget := buildResolveTarget(apexRecords, r.zone)
 	for _, f := range cname.Check(r.zone, cgraph, 8, resolveTarget) {
-		res.AddFinding(f, r.zone)
+		res.AddFinding(f)
 	}
 
 	// 8. DNSSEC checks.
 	if zk := dnssec.Collect(resp); zk.HasDNSKEY() || zk.HasRRSIG() {
 		for _, f := range dnssec.CheckZone(r.zone, zk, time.Now()) {
-			res.AddFinding(f, r.zone)
+			res.AddFinding(f)
 		}
 	}
 
@@ -203,7 +203,7 @@ func (r *Runner) Run(ctx context.Context) *Result {
 	nsecRecs = append(nsecRecs, dnsutil.RRsOfType(resp.Answer, dns.TypeNSEC3)...)
 	nsecRecs = append(nsecRecs, dnsutil.RRsOfType(resp.Ns, dns.TypeNSEC3)...)
 	for _, f := range nsec.Check(r.zone, nsec.Analyze(nsecRecs)) {
-		res.AddFinding(f, r.zone)
+		res.AddFinding(f)
 	}
 
 	// 10. AXFR (opt-in).
@@ -219,7 +219,7 @@ func (r *Runner) Run(ctx context.Context) *Result {
 				o.Status = "refused"
 			}
 			for _, f := range axfr.Evaluate(r.zone, nsHost, o) {
-				res.AddFinding(f, r.zone)
+				res.AddFinding(f)
 			}
 		}
 	}
@@ -229,7 +229,7 @@ func (r *Runner) Run(ctx context.Context) *Result {
 		if wcResp, err := r.query(ctx, dnsutil.SafeNewMsg(wcName, dns.TypeA)); err == nil && wcResp != nil {
 			if wildcard.IsWildcardResponse(wcResp, wcName) {
 				for _, f := range wildcard.Check(r.zone, wcName, true) {
-					res.AddFinding(f, r.zone)
+					res.AddFinding(f)
 				}
 			}
 		}
@@ -248,12 +248,20 @@ func (r *Runner) Run(ctx context.Context) *Result {
 			}
 			rp := active.CheckRecursion(nsHost, r.zone, recResp)
 			for _, f := range active.Check(nsHost, r.zone, rp) {
-				res.AddFinding(f, r.zone)
+				res.AddFinding(f)
 			}
 		}
 	}
 
-	res.Findings = findings.Sorted(res.Findings)
+	sorted := make([]findings.Finding, len(res.Findings))
+	for i, f := range res.Findings {
+		sorted[i] = *f
+	}
+	findings.Sort(sorted)
+	res.Findings = make([]*findings.Finding, len(sorted))
+	for i, f := range sorted {
+		res.Findings[i] = &f
+	}
 	res.Duration = time.Since(start)
 
 	res.Records = len(resp.Answer) + len(resp.Ns) + len(apexRecords)
@@ -344,8 +352,8 @@ func collectApexRecords(ctx context.Context, r *Runner, initial *dns.Msg) []dns.
 	return all
 }
 
-func (r *Result) AddFinding(f *findings.Finding, zone string) {
-	f.WithZone(zone)
+func (r *Result) AddFinding(f *findings.Finding) {
+	f.Zone = r.Zone
 	r.Findings = append(r.Findings, f)
 }
 

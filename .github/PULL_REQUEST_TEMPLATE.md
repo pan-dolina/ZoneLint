@@ -1,17 +1,15 @@
 ## Summary
 
-What this PR changes and why.
+<!-- What does this change and why? Link the issue if there is one. -->
 
-## Related issues
+## Checklist
 
-References to related issues.
-
-## Testing
-
-- [ ] Unit tests added/updated
-- [ ] Functional tests updated (if audit pipeline changed)
-- [ ] `go test -race ./...` passes
-- [ ] `gofmt` and `go vet` clean
+- [ ] Tests added or updated
+- [ ] `go test ./...` and `go test -race ./...` pass
+- [ ] New or changed finding IDs are reflected in `docs/findings.md`
+- [ ] `gofmt`, `go vet` and `staticcheck` clean
+- [ ] `CHANGELOG.md` updated for user-visible changes
+- [ ] No new dependencies, or justified in `docs/development.md`
 
 ## Security notes
 

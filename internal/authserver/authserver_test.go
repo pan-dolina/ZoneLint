@@ -11,7 +11,7 @@ import (
 
 func TestUnreachable(t *testing.T) {
 	fs := CheckServer("example.test.", "ns1.example.test.", nil)
-	if len(fs) != 1 || fs[0].ID != findings.AuthUDPFail {
+	if len(fs) != 1 || fs[0].ID != findings.AuthUDPFail.ID {
 		t.Fatalf("expected unreachable finding, got %+v", fs)
 	}
 }
@@ -23,7 +23,7 @@ func TestLameServer(t *testing.T) {
 	pr := ProbeResponse(resp)
 	pr.UDPReachable = true // reachable but non-authoritative
 	fs := CheckServer("example.test.", "ns1.example.test.", pr)
-	if !hasID(fs, findings.AuthNoAA) {
+	if !hasID(fs, findings.AuthNoAA.ID) {
 		t.Fatalf("expected no-AA finding, got %+v", fs)
 	}
 }
@@ -54,7 +54,7 @@ func TestGoodServer(t *testing.T) {
 	pr.Consistent = true
 	fs := CheckServer("example.test.", "ns1.example.test.", pr)
 	for _, f := range fs {
-		if f.Severity != string(findings.SeverityPass) && f.Severity != string(findings.SeverityInfo) {
+		if f.Severity != findings.SeverityPass && f.Severity != findings.SeverityInfo {
 			t.Fatalf("expected pass/info, got %+v", fs)
 		}
 	}

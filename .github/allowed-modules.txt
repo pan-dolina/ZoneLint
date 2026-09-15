@@ -1,0 +1,5 @@
+# Third-party modules linked into the zonelint binary.
+# Changes require a justification in docs/development.md.
+github.com/miekg/dns
+golang.org/x/net
+golang.org/x/sys

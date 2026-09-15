@@ -71,7 +71,7 @@ func TestCLIAuditHuman(t *testing.T) {
 func TestCLIAuditFailOn(t *testing.T) {
 	installFake(t, "axfr.test.")
 	var out bytes.Buffer
-	err := run([]string{"-fail-on", "critical", "axfr.test."}, &fakeFile{&out}, os.Stderr)
+	err := run([]string{"-active", "-fail-on", "critical", "axfr.test."}, &fakeFile{&out}, os.Stderr)
 	if err == nil {
 		t.Fatal("expected error exit for critical finding")
 	}

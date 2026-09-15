@@ -12,7 +12,7 @@ import (
 	"crypto/ed25519"
 	"crypto/elliptic"
 	"crypto/rsa"
-	"crypto/sha1" //nolint:gosec // SHA-1 is required for DNSSEC key tags and SHA1 DS digests (RFC 4034/3757).
+	"crypto/sha1" //#nosec G505 -- SHA-1 is required for DNSSEC key tags and SHA1 DS digests (RFC 4034/3757).
 	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/binary"
@@ -295,7 +295,7 @@ func hashDigest(h crypto.Hash, data []byte) []byte {
 	var hh hash.Hash
 	switch h {
 	case crypto.SHA1:
-		hh = sha1.New()
+		hh = sha1.New() //#nosec G401 -- SHA-1 is required for DNSSEC RRSIG verification (RFC 4034/3757).
 	case crypto.SHA256:
 		hh = sha256.New()
 	case crypto.SHA512:
@@ -341,7 +341,7 @@ func ParseDS(rr *dns.DS) *DSInfo {
 func ComputeDSDigest(digestType uint8, dnskeyRData []byte) ([]byte, error) {
 	switch digestType {
 	case DigestTypeSHA1:
-		h := sha1.New()
+		h := sha1.New() //#nosec G401 -- SHA-1 is required for DS digest computation (RFC 4034/3757).
 		h.Write(dnskeyRData)
 		return h.Sum(nil), nil
 	case DigestTypeSHA256:

@@ -4,6 +4,7 @@
 package delegation
 
 import (
+	"fmt"
 	"net"
 	"sort"
 	"strings"
@@ -55,27 +56,19 @@ func Compare(zone string, parent ParentView, child ChildView, now time.Time) []*
 	parentNS := sortedNames(parent.NS)
 	childNS := sortedNames(child.NS)
 	if !equalSets(parentNS, childNS) {
-		f := findings.New(findings.DelegInconsistentNS, findings.SeverityHigh, findings.CategoryDelegation,
-			"Parent and child NS sets disagree")
-		f.Explanation = "The parent zone delegates with a different set of name servers than the child authoritative server claims to serve."
-		f.AddEvidence("parent NS: %v", parentNS)
-		f.AddEvidence("child NS: %v", childNS)
-		f.Recommendation = "Reconcile the NS set between parent and child; a mismatch often indicates a misconfigured or compromised delegation."
-		f.References = []string{"RFC 1034 §4.3.2", "RFC 6762"}
-		f.WithZone(zone)
-		out = append(out, f)
+		f := findings.DelegInconsistentNS.New(zone,
+			"The parent zone delegates with a different set of name servers than the child authoritative server claims to serve.",
+			fmt.Sprintf("parent NS: %v", parentNS),
+			fmt.Sprintf("child NS: %v", childNS))
+		out = append(out, &f)
 	}
 
 	// 2. Lame delegation: child does not claim authority.
 	if child.Authoritative == false && len(child.NS) > 0 {
-		f := findings.New(findings.DelegLame, findings.SeverityHigh, findings.CategoryDelegation,
-			"Lame delegation")
-		f.Explanation = "The authoritative server for the zone did not respond authoritatively (AA=0) to a zone NS/SOA query."
-		f.WithZone(zone)
-		f.Subject = "zone apex"
-		f.Recommendation = "Ensure the server is configured as authoritative for this zone."
-		f.References = []string{"RFC 1034 §4.3.3"}
-		out = append(out, f)
+		f := findings.DelegLame.New("zone apex",
+			"The authoritative server for the zone did not respond authoritatively (AA=0) to a zone NS/SOA query.")
+		f = f.WithZone(zone)
+		out = append(out, &f)
 	}
 
 	// 3. Unreachable / non-authoritative NS.
@@ -83,15 +76,11 @@ func Compare(zone string, parent ParentView, child ChildView, now time.Time) []*
 		// Reachability is assessed by the caller via AuthServer; here we flag
 		// NS records that exist in parent but are absent from child.
 		if !contains(childNS, nsHost) {
-			f := findings.New(findings.DelegNonAuthNS, findings.SeverityMedium, findings.CategoryDelegation,
-				"NS record absent from child authority")
-			f.Explanation = "The parent lists a name server that the child authoritative server does not include in its own NS set."
-			f.AddEvidence("parent NS: %s", nsHost)
-			f.WithZone(zone)
-			f.Subject = nsHost
-			f.Recommendation = "Verify the NS configuration on the child server."
-			f.References = []string{"RFC 1034 §4.3.2"}
-			out = append(out, f)
+			f := findings.DelegNonAuthNS.New(nsHost,
+				"The parent lists a name server that the child authoritative server does not include in its own NS set.",
+				fmt.Sprintf("parent NS: %s", nsHost))
+			f = f.WithZone(zone)
+			out = append(out, &f)
 		}
 	}
 
@@ -99,15 +88,11 @@ func Compare(zone string, parent ParentView, child ChildView, now time.Time) []*
 	for _, nsHost := range parentNS {
 		if isSubDomain(nsHost, zone) {
 			if len(parent.Glue[nsHost]) == 0 && len(parent.GlueAAAA[nsHost]) == 0 {
-				f := findings.New(findings.DelegMissingGlue, findings.SeverityMedium, findings.CategoryDelegation,
-					"Missing glue for in-bailiwick NS")
-				f.Explanation = "An in-bailiwick name server has no glue A/AAAA records, so resolvers cannot reach it."
-				f.AddEvidence("NS %s has no glue", nsHost)
-				f.WithZone(zone)
-				f.Subject = nsHost
-				f.Recommendation = "Add A/AAAA glue records for in-bailiwick name servers."
-				f.References = []string{"RFC 1034 §4.3.1"}
-				out = append(out, f)
+				f := findings.DelegMissingGlue.New(nsHost,
+					"An in-bailiwick name server has no glue A/AAAA records, so resolvers cannot reach it.",
+					fmt.Sprintf("NS %s has no glue", nsHost))
+				f = f.WithZone(zone)
+				out = append(out, &f)
 			}
 		}
 	}

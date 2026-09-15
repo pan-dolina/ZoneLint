@@ -5,6 +5,7 @@ package wildcard
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"strings"
 
 	"github.com/miekg/dns"
@@ -27,14 +28,10 @@ func Check(zone, probeName string, hasWildcard bool) []*findings.Finding {
 	if !hasWildcard {
 		return nil
 	}
-	f := findings.New(findings.WildcardPresent, findings.SeverityInfo, findings.CategoryWildcard,
-		"Wildcard DNS record present")
-	f.Explanation = "The zone answers a non-existent, randomly-generated name with a record. Wildcards can mask typosquatting and cause unexpected resolution."
-	f.AddEvidence("queried %s and received a wildcard/nxdomain-clobbering answer", probeName)
-	f.WithZone(zone)
-	f.Recommendation = "Confirm the wildcard is intentional; if so, document it. Wildcards can obscure NXDOMAIN semantics."
-	f.References = []string{"RFC 1034 §4.3.3", "RFC 4592"}
-	return []*findings.Finding{f}
+	f := findings.WildcardPresent.New(zone,
+		"The zone answers a non-existent, randomly-generated name with a record. Wildcards can mask typosquatting and cause unexpected resolution.",
+		fmt.Sprintf("queried %s and received a wildcard/nxdomain-clobbering answer", probeName))
+	return []*findings.Finding{&f}
 }
 
 // IsWildcardResponse reports whether a response indicates a wildcard answer.

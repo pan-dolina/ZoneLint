@@ -25,7 +25,7 @@ func TestHealthyZone(t *testing.T) {
 	r := NewWithResolver("healthy.test.", Options{Resolver: "fake", Profile: string(ttl.ProfileBalanced)}, fake)
 	res := r.Run(context.Background())
 	for _, f := range res.Findings {
-		if f.Severity == string(findings.SeverityCritical) || f.Severity == string(findings.SeverityHigh) {
+		if f.Severity == findings.SeverityCritical || f.Severity == findings.SeverityHigh {
 			t.Fatalf("healthy zone should have no high/critical findings, got %+v", f)
 		}
 	}
@@ -36,7 +36,7 @@ func TestAXFRAllowed(t *testing.T) {
 	fake.AddZone(testzones.AXFRAllowed())
 	r := NewWithResolver("axfr.test.", Options{Resolver: "fake", Active: true}, fake)
 	res := r.Run(context.Background())
-	if !findID(res.Findings, findings.AXFRAllowed) {
+	if !findID(res.Findings, findings.AXFRAllowed.ID) {
 		t.Fatalf("expected AXFR allowed finding, got %+v", res.Findings)
 	}
 }
@@ -47,7 +47,7 @@ func TestAXFRDenied(t *testing.T) {
 	r := NewWithResolver("axfrdenied.test.", Options{Resolver: "fake", Active: true}, fake)
 	res := r.Run(context.Background())
 	// Should not report AXFR allowed.
-	if findID(res.Findings, findings.AXFRAllowed) {
+	if findID(res.Findings, findings.AXFRAllowed.ID) {
 		t.Fatalf("did not expect AXFR allowed, got %+v", res.Findings)
 	}
 }
@@ -57,7 +57,7 @@ func TestPrivateAddr(t *testing.T) {
 	fake.AddZone(testzones.PrivateAddr())
 	r := NewWithResolver("privateaddr.test.", Options{Resolver: "fake"}, fake)
 	res := r.Run(context.Background())
-	if !findID(res.Findings, findings.AddrPrivate) {
+	if !findID(res.Findings, findings.AddrPrivate.ID) {
 		t.Fatalf("expected private address finding, got %+v", res.Findings)
 	}
 }
@@ -67,7 +67,7 @@ func TestShortTTL(t *testing.T) {
 	fake.AddZone(testzones.ShortTTL())
 	r := NewWithResolver("shortttl.test.", Options{Resolver: "fake", Profile: string(ttl.ProfileBalanced)}, fake)
 	res := r.Run(context.Background())
-	if !findID(res.Findings, findings.TTLShort) {
+	if !findID(res.Findings, findings.TTLShort.ID) {
 		t.Fatalf("expected short TTL finding, got %+v", res.Findings)
 	}
 }
@@ -77,7 +77,7 @@ func TestCNAMELoop(t *testing.T) {
 	fake.AddZone(testzones.CNANameLoop())
 	r := NewWithResolver("cnameraise.test.", Options{Resolver: "fake"}, fake)
 	res := r.Run(context.Background())
-	if !findID(res.Findings, findings.CNAMELoop) {
+	if !findID(res.Findings, findings.CNAMELoop.ID) {
 		t.Fatalf("expected CNAME loop finding, got %+v", res.Findings)
 	}
 }
@@ -87,7 +87,7 @@ func TestMalformedCAA(t *testing.T) {
 	fake.AddZone(testzones.MalformedCAA())
 	r := NewWithResolver("malformedcaa.test.", Options{Resolver: "fake"}, fake)
 	res := r.Run(context.Background())
-	if !findID(res.Findings, findings.CAACriticalUnknown) {
+	if !findID(res.Findings, findings.CAACriticalUnknown.ID) {
 		t.Fatalf("expected CAA finding, got %+v", res.Findings)
 	}
 }
@@ -100,7 +100,7 @@ func TestLameDelegation(t *testing.T) {
 	// The lame delegation should surface as a high-severity finding.
 	found := false
 	for _, f := range res.Findings {
-		if f.Severity == string(findings.SeverityHigh) {
+		if f.Severity == findings.SeverityHigh {
 			found = true
 		}
 	}

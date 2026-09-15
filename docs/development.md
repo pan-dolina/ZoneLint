@@ -54,6 +54,17 @@ The CI gate runs:
 - `go mod verify` — module integrity.
 - `OSV-Scanner` — supply-chain scanning.
 
+## Release builds
+
+Release archives are built reproducibly with `scripts/build-release.sh`. The
+build pins the Go toolchain, build flags, and archive entry timestamps so the
+output is byte-for-byte identical across machines. Verify reproducibility with
+`scripts/verify-reproducible.sh`.
+
+Adding a third-party dependency requires an explicit, reviewed change to
+`.github/allowed-modules.txt`; `scripts/check-dependencies.sh` fails the build
+when the release binary links a module not listed there.
+
 ## Architecture
 
 - `internal/dns` — DNS wire-format helpers.

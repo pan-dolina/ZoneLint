@@ -2,6 +2,7 @@
 package caa
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/miekg/dns"
@@ -28,25 +29,18 @@ func Check(zone string, records []dns.RR) []*findings.Finding {
 		tag := strings.ToLower(strings.TrimSpace(c.Tag))
 		if c.Flag&0x01 != 0 && !knownTags[tag] {
 			criticalUnknown++
-			f := findings.New(findings.CAACriticalUnknown, findings.SeverityMedium, findings.CategoryCAA,
-				"Unknown critical CAA property")
-			f.Explanation = "A CAA record sets the critical bit for a tag this tool does not recognize; relying on it could block issuance or be ignored."
-			f.AddEvidence("flags=%d tag=%q value=%q", c.Flag, c.Tag, c.Value)
-			f.WithZone(zone)
-			f.Recommendation = "Only set the critical bit on known tags (issue, issuewild, iodef)."
-			f.References = []string{"RFC 8659 §3"}
-			out = append(out, f)
+			f := findings.CAACriticalUnknown.New(zone,
+				"A CAA record sets the critical bit for a tag this tool does not recognize; relying on it could block issuance or be ignored.",
+				fmt.Sprintf("flags=%d tag=%q value=%q", c.Flag, c.Tag, c.Value))
+			out = append(out, &f)
 		}
 		if issues := validateTag(tag, c.Flag, c.Value); issues != "" {
 			malformed++
-			f := findings.New(findings.CAACriticalUnknown, findings.SeverityLow, findings.CategoryCAA,
-				"Malformed CAA record")
-			f.Explanation = issues
-			f.AddEvidence("tag=%q value=%q", c.Tag, c.Value)
-			f.WithZone(zone)
-			f.Recommendation = "Fix the CAA record syntax."
-			f.References = []string{"RFC 8659 §2.1, §2.2"}
-			out = append(out, f)
+			r := findings.CAACriticalUnknown.WithSeverity(findings.SeverityLow)
+			f := r.New(zone,
+				issues,
+				fmt.Sprintf("tag=%q value=%q", c.Tag, c.Value))
+			out = append(out, &f)
 		}
 	}
 	_ = criticalUnknown

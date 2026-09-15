@@ -9,11 +9,11 @@ import (
 	"github.com/example/ZoneLint/internal/findings"
 )
 
-func sampleFindings() []*findings.Finding {
-	var fs []*findings.Finding
-	fs = append(fs, findings.New(findings.GeneralError, findings.SeverityHigh, findings.CategoryGeneral, "Test high"))
-	fs = append(fs, findings.New(findings.TTLShort, findings.SeverityInfo, findings.CategoryTTL, "Test info"))
-	fs = append(fs, findings.New(findings.AXFRAllowed, findings.SeverityCritical, findings.CategoryAXFR, "Test critical"))
+func sampleFindings() []findings.Finding {
+	var fs []findings.Finding
+	fs = append(fs, findings.GeneralError.New("example.test.", "Test high"))
+	fs = append(fs, findings.TTLShort.New("example.test.", "Test info"))
+	fs = append(fs, findings.AXFRAllowed.New("example.test.", "Test critical"))
 	return fs
 }
 

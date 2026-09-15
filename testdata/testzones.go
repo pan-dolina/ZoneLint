@@ -26,7 +26,7 @@ func signRR(rr dns.RR, rtype uint16, exp, inc uint32, flags uint16, algo uint8) 
 	sig.Hdr = dns.RR_Header{Name: clone.Header().Name, Rrtype: dns.TypeRRSIG, Class: dns.ClassINET, Ttl: clone.Header().Ttl}
 	sig.TypeCovered = rtype
 	sig.Algorithm = algo
-	sig.Labels = uint8(len(splitLabels(clone.Header().Name)))
+	sig.Labels = uint8(len(splitLabels(clone.Header().Name))) //#nosec G115 -- test fixture: label count fits in uint8
 	sig.OrigTtl = clone.Header().Ttl
 	sig.Expiration = exp
 	sig.Inception = inc
@@ -120,7 +120,7 @@ func caa(zone string, critical int, tag, value string, ttl uint32) dns.RR {
 	r.Hdr = dns.RR_Header{Name: name(zone), Rrtype: dns.TypeCAA, Class: dns.ClassINET, Ttl: ttl}
 	r.Tag = tag
 	r.Value = value
-	r.Flag = byte(critical)
+	r.Flag = byte(critical) //#nosec G115 -- test fixture: critical flag is 0 or 1
 	return r
 }
 
@@ -345,8 +345,8 @@ func DNSKEYRecord(zone string) dns.RR {
 func ExpireDNSSec() *resolver.Zone {
 	zone := "expireddnssec.test."
 	now := time.Now().Add(-48 * time.Hour)
-	exp := uint32(now.Add(-1 * time.Hour).Unix())
-	inc := uint32(now.Add(-48 * time.Hour).Unix())
+	exp := uint32(now.Add(-1 * time.Hour).Unix())  //#nosec G115 -- test fixture: Unix time fits in uint32
+	inc := uint32(now.Add(-48 * time.Hour).Unix()) //#nosec G115 -- test fixture: Unix time fits in uint32
 	a := a(zone, "203.0.113.20", 300)
 	signed := signRR(a, dns.TypeA, exp, inc, 256, 15)
 	return &resolver.Zone{
