@@ -1,0 +1,13 @@
+# Enforce Unix line endings on all text files to keep
+# cross-platform tests (e.g. TestCatalogDocumented) deterministic.
+* text=auto eol=lf
+
+# Keep binary files untouched.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.bin binary
+*.gz binary
+*.zip binary
