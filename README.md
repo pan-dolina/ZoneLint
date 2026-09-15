@@ -72,14 +72,19 @@ See [`docs/checks.md`](docs/checks.md) for the full check catalog, and
 Requires Go 1.23 or later.
 
 ```sh
-# Clone the repository
+# Install into your Go bin directory
+go install github.com/pan-dolina/ZoneLint/cmd/zonelint@latest
+
+# Run it (the binary is in $(go env GOPATH)/bin)
+zonelint example.com
+```
+
+Or build locally from a checkout:
+
+```sh
 git clone https://github.com/pan-dolina/ZoneLint.git
 cd ZoneLint
-
-# Build the binary
 go build -o dist/zonelint ./cmd/zonelint
-
-# Run it
 ./dist/zonelint example.com
 ```
 
