@@ -69,7 +69,7 @@ See [`docs/checks.md`](docs/checks.md) for the full check catalog, and
 
 ### From source
 
-Requires Go 1.25 or later.
+Requires Go 1.26 or later.
 
 ```sh
 # Install into your Go bin directory
