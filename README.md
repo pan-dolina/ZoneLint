@@ -67,6 +67,24 @@ See [`docs/checks.md`](docs/checks.md) for the full check catalog, and
 
 ## Installation
 
+### From source
+
+Requires Go 1.23 or later.
+
+```sh
+# Clone the repository
+git clone https://github.com/pan-dolina/ZoneLint.git
+cd ZoneLint
+
+# Build the binary
+go build -o dist/zonelint ./cmd/zonelint
+
+# Run it
+./dist/zonelint example.com
+```
+
+### From a release
+
 Prebuilt binaries are published per release for Linux/macOS/Windows on amd64
 and arm64. See [`docs/release-verification.md`](docs/release-verification.md).
 
