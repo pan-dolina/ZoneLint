@@ -6,7 +6,7 @@ import (
 
 	"github.com/miekg/dns"
 
-	"github.com/example/ZoneLint/internal/findings"
+	"github.com/pan-dolina/ZoneLint/internal/findings"
 )
 
 // CheckZone runs all DNSSEC checks over a collected ZoneKeys and returns findings.

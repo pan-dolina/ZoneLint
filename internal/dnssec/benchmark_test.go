@@ -6,7 +6,7 @@ import (
 
 	"github.com/miekg/dns"
 
-	"github.com/example/ZoneLint/testdata"
+	"github.com/pan-dolina/ZoneLint/testdata"
 )
 
 // BenchmarkCheckZoneExpired benchmarks DNSSEC validation over a zone with

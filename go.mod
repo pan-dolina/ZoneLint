@@ -1,4 +1,4 @@
-module github.com/example/ZoneLint
+module github.com/pan-dolina/ZoneLint
 
 go 1.26.3
 

@@ -9,7 +9,7 @@ import (
 
 	"github.com/miekg/dns"
 
-	"github.com/example/ZoneLint/internal/budget"
+	"github.com/pan-dolina/ZoneLint/internal/budget"
 )
 
 // Result is the outcome of a single query.

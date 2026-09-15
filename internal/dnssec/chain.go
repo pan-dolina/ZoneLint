@@ -7,7 +7,7 @@ import (
 
 	"github.com/miekg/dns"
 
-	"github.com/example/ZoneLint/internal/dns"
+	"github.com/pan-dolina/ZoneLint/internal/dns"
 )
 
 // ChainResult reports the outcome of chain-of-trust validation.

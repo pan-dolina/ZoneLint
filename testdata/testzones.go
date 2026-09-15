@@ -12,7 +12,7 @@ import (
 
 	"github.com/miekg/dns"
 
-	"github.com/example/ZoneLint/internal/resolver"
+	"github.com/pan-dolina/ZoneLint/internal/resolver"
 )
 
 func name(s string) string { return dns.Fqdn(s) }

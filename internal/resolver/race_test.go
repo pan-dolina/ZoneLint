@@ -9,7 +9,7 @@ import (
 
 	"github.com/miekg/dns"
 
-	dnsutil "github.com/example/ZoneLint/internal/dns"
+	dnsutil "github.com/pan-dolina/ZoneLint/internal/dns"
 )
 
 // TestConcurrentFakeAccess hammers the fake resolver from many goroutines to

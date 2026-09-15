@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/example/ZoneLint/internal/audit"
-	"github.com/example/ZoneLint/internal/resolver"
-	"github.com/example/ZoneLint/testdata"
+	"github.com/pan-dolina/ZoneLint/internal/audit"
+	"github.com/pan-dolina/ZoneLint/internal/resolver"
+	"github.com/pan-dolina/ZoneLint/testdata"
 )
 
 func installFake(t *testing.T, zone string) {

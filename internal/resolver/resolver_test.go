@@ -8,9 +8,9 @@ import (
 
 	"github.com/miekg/dns"
 
-	"github.com/example/ZoneLint/internal/budget"
+	"github.com/pan-dolina/ZoneLint/internal/budget"
 
-	"github.com/example/ZoneLint/internal/dns"
+	"github.com/pan-dolina/ZoneLint/internal/dns"
 )
 
 func buildSOA(zone, mname, rname string, serial, refresh, retry, expire, minimum uint32) dns.RR {

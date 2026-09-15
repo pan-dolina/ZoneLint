@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/example/ZoneLint/internal/findings"
+	"github.com/pan-dolina/ZoneLint/internal/findings"
 )
 
 // Format selects the output format.
@@ -163,7 +163,7 @@ func sarif(sb *strings.Builder, zone string, s Summary, fs []findings.Finding) e
 		"tool": map[string]interface{}{
 			"driver": map[string]interface{}{
 				"name":           "ZoneLint",
-				"informationUri": "https://github.com/example/ZoneLint",
+				"informationUri": "https://github.com/pan-dolina/ZoneLint",
 				"rules":          ruleList(rules),
 			},
 		},

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/example/ZoneLint/internal/findings"
+	"github.com/pan-dolina/ZoneLint/internal/findings"
 )
 
 func sampleFindings() []findings.Finding {

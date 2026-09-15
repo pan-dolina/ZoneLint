@@ -9,8 +9,8 @@ import (
 
 	"github.com/miekg/dns"
 
-	dnsutil "github.com/example/ZoneLint/internal/dns"
-	"github.com/example/ZoneLint/internal/findings"
+	dnsutil "github.com/pan-dolina/ZoneLint/internal/dns"
+	"github.com/pan-dolina/ZoneLint/internal/findings"
 )
 
 // ProbeResult holds the outcome of probing a single NS host.

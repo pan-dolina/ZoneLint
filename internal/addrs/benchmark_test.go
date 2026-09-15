@@ -3,7 +3,7 @@ package addrs
 import (
 	"testing"
 
-	testzones "github.com/example/ZoneLint/testdata"
+	testzones "github.com/pan-dolina/ZoneLint/testdata"
 )
 
 // BenchmarkCheckAllLargeZone benchmarks address classification over a large

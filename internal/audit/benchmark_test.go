@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/example/ZoneLint/internal/resolver"
-	"github.com/example/ZoneLint/internal/ttl"
-	"github.com/example/ZoneLint/testdata"
+	"github.com/pan-dolina/ZoneLint/internal/resolver"
+	"github.com/pan-dolina/ZoneLint/internal/ttl"
+	"github.com/pan-dolina/ZoneLint/testdata"
 )
 
 func BenchmarkAuditHealthy(b *testing.B) {

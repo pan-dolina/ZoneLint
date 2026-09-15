@@ -7,7 +7,7 @@ import (
 
 	"github.com/miekg/dns"
 
-	"github.com/example/ZoneLint/internal/budget"
+	"github.com/pan-dolina/ZoneLint/internal/budget"
 )
 
 // NetworkResolver is a production resolver over UDP/TCP with EDNS, DO bit,

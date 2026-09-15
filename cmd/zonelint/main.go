@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/example/ZoneLint/internal/audit"
-	"github.com/example/ZoneLint/internal/findings"
-	"github.com/example/ZoneLint/internal/report"
-	"github.com/example/ZoneLint/internal/version"
+	"github.com/pan-dolina/ZoneLint/internal/audit"
+	"github.com/pan-dolina/ZoneLint/internal/findings"
+	"github.com/pan-dolina/ZoneLint/internal/report"
+	"github.com/pan-dolina/ZoneLint/internal/version"
 )
 
 func main() {

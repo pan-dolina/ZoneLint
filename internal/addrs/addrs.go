@@ -9,7 +9,7 @@ import (
 
 	"github.com/miekg/dns"
 
-	"github.com/example/ZoneLint/internal/findings"
+	"github.com/pan-dolina/ZoneLint/internal/findings"
 )
 
 // Classification describes the category of an address.

@@ -5,7 +5,7 @@ import (
 
 	"github.com/miekg/dns"
 
-	"github.com/example/ZoneLint/testdata"
+	"github.com/pan-dolina/ZoneLint/testdata"
 )
 
 func txtRecord(name, value string, ttl uint32) dns.RR {

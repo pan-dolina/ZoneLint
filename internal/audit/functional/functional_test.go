@@ -8,12 +8,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/example/ZoneLint/internal/audit"
-	"github.com/example/ZoneLint/internal/findings"
-	"github.com/example/ZoneLint/internal/report"
-	"github.com/example/ZoneLint/internal/resolver"
-	"github.com/example/ZoneLint/internal/ttl"
-	"github.com/example/ZoneLint/testdata"
+	"github.com/pan-dolina/ZoneLint/internal/audit"
+	"github.com/pan-dolina/ZoneLint/internal/findings"
+	"github.com/pan-dolina/ZoneLint/internal/report"
+	"github.com/pan-dolina/ZoneLint/internal/resolver"
+	"github.com/pan-dolina/ZoneLint/internal/ttl"
+	"github.com/pan-dolina/ZoneLint/testdata"
 )
 
 // findID reports whether any finding has the given ID.

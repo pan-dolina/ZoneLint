@@ -7,7 +7,7 @@ import (
 
 	"github.com/miekg/dns"
 
-	"github.com/example/ZoneLint/internal/findings"
+	"github.com/pan-dolina/ZoneLint/internal/findings"
 )
 
 // Assessment holds the result of analyzing NSEC/NSEC3 records.
