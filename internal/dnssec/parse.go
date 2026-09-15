@@ -146,12 +146,9 @@ func curveKey(c elliptic.Curve, key []byte, err error) (crypto.PublicKey, error)
 	if len(key) != (c.Params().BitSize+7)/8*2 {
 		return nil, errBadKeyLength
 	}
-	x := new(big.Int).SetBytes(key[:len(key)/2])
-	y := new(big.Int).SetBytes(key[len(key)/2:])
-	if !c.IsOnCurve(x, y) {
-		return nil, errBadKeyLength
-	}
-	return &ecdsa.PublicKey{Curve: c, X: x, Y: y}, nil
+	// ParseUncompressedPublicKey performs the on-curve check and returns a
+	// validated *ecdsa.PublicKey without touching the deprecated X/Y fields.
+	return ecdsa.ParseUncompressedPublicKey(c, key)
 }
 
 func rsaKey(key []byte, err error) (crypto.PublicKey, error) {
