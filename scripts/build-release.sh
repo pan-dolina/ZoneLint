@@ -21,7 +21,15 @@ COMMIT="$(git rev-parse HEAD)"
 SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
 
 toolchain="$(sed -n 's/^toolchain //p' go.mod)"
-export GOTOOLCHAIN="${toolchain:-local}"
+# Use the toolchain named in go.mod so the build is reproducible. Fall back to
+# the locally installed toolchain only if go.mod declares none.
+if [ -n "$toolchain" ]; then
+  export GOTOOLCHAIN="$toolchain"
+else
+  # go.mod has no toolchain directive; allow the toolchain to be selected so
+  # the go directive's minimum version can still be satisfied.
+  export GOTOOLCHAIN="${GOTOOLCHAIN:-auto}"
+fi
 export GOENV=off GOAMD64=v1 GOARM64=v8.0 GOEXPERIMENT=
 echo "toolchain: $(go version)"
 DATE="$(git log -1 --format=%cI)"
@@ -32,7 +40,7 @@ if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
   echo "warning: working tree has uncommitted changes; the build is not reproducible from the commit" >&2
 fi
 
-pkg="github.com/example/ZoneLint/internal/version"
+pkg="github.com/pan-dolina/ZoneLint/internal/version"
 ldflags="-s -w -X ${pkg}.Version=${VERSION} -X ${pkg}.Commit=${COMMIT} -X ${pkg}.Date=${DATE}"
 
 rm -rf "$DIST"

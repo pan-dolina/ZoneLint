@@ -47,8 +47,17 @@ func run(args []string, stdout, stderr io.Writer) error {
 		fmt.Fprintln(stderr, "  zonelint [flags] <domain> [<domain> ...]")
 		fmt.Fprintln(stderr, "\nFlags:")
 		fs.PrintDefaults()
+		fmt.Fprintln(stderr, "\nExit codes:")
+		fmt.Fprintln(stderr, "  0  no findings at or above the --fail-on threshold")
+		fmt.Fprintln(stderr, "  1  an error occurred, or a finding at or above the")
+		fmt.Fprintln(stderr, "     --fail-on threshold was reported")
 	}
 	if err := fs.Parse(args); err != nil {
+		// `--help` prints usage and asks for help; treat it as a graceful
+		// exit rather than an error so the CLI returns status 0.
+		if err.Error() == "flag: help requested" {
+			return nil
+		}
 		return err
 	}
 

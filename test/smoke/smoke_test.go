@@ -92,7 +92,9 @@ func TestVersion(t *testing.T) {
 
 func TestAuditJSON(t *testing.T) {
 	// Audit against a public resolver. This exercises the full pipeline.
-	out, code := runBinary(t, "example.test.", "--json")
+	// Flags must precede the domain: the CLI parses flags until the first
+	// non-flag argument, so `--json` has to come before the zone name.
+	out, code := runBinary(t, "--json", "example.test.")
 	if code != 0 {
 		t.Fatalf("code %d\n%s", code, out)
 	}
