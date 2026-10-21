@@ -172,6 +172,61 @@ func TestBrokenDNSSEC(t *testing.T) {
 	}
 }
 
+// 21. Correctly signed zone: no DNSSEC weakness findings.
+func TestSignedDNSSECValid(t *testing.T) {
+	res := run(t, "signed.test.", testzones.DNSSECSigned(), audit.Options{Resolver: "fake"})
+	for _, id := range []string{
+		findings.DNSSECNoDNSKEY.ID,
+		findings.DNSSECNoRRSIG.ID,
+		findings.DNSSECSignExpired.ID,
+		findings.DNSSECSignNotYet.ID,
+		findings.DNSSECBrokenChain.ID,
+		findings.DNSSECNoDS.ID,
+		findings.DNSSECNoNSEC.ID,
+		findings.DNSSECInvalidSig.ID,
+	} {
+		if hasID(res.Findings, id) {
+			t.Fatalf("signed zone should not have %s: %+v", id, res.Findings)
+		}
+	}
+}
+
+// 22. Tampered signature: cryptographic verification fails (DNS-DNSSEC-010).
+func TestTamperedDNSSEC(t *testing.T) {
+	res := run(t, "signed.test.", testzones.DNSSECTampered(), audit.Options{Resolver: "fake"})
+	if !hasID(res.Findings, findings.DNSSECInvalidSig.ID) {
+		t.Fatalf("expected invalid signature finding: %+v", res.Findings)
+	}
+}
+
+// 23. Unsigned zone: no DNSSEC presence/chain/NSEC findings.
+func TestUnsignedNoDNSSECFindings(t *testing.T) {
+	res := run(t, "healthy.test.", testzones.Healthy(), audit.Options{Resolver: "fake"})
+	for _, id := range []string{
+		findings.DNSSECNoDNSKEY.ID,
+		findings.DNSSECNoRRSIG.ID,
+		findings.DNSSECBrokenChain.ID,
+		findings.DNSSECNoDS.ID,
+		findings.DNSSECNoNSEC.ID,
+		findings.DNSSECInvalidSig.ID,
+	} {
+		if hasID(res.Findings, id) {
+			t.Fatalf("unsigned zone should not have %s: %+v", id, res.Findings)
+		}
+	}
+}
+
+// 24. Unsigned zone with parent-signed NSEC records in negative responses:
+// no DNSSEC findings (parent signatures are not the zone's own DNSSEC state).
+func TestUnsignedParentNSEC(t *testing.T) {
+	res := run(t, "unsignedparent.test.", testzones.UnsignedParentNSEC(), audit.Options{Resolver: "fake"})
+	for _, f := range res.Findings {
+		if strings.HasPrefix(f.ID, "DNS-DNSSEC-") {
+			t.Fatalf("unsigned zone should have no DNSSEC findings, got %s: %+v", f.ID, res.Findings)
+		}
+	}
+}
+
 // 15. Recursion zone produces open recursion finding when active.
 func TestRecursion(t *testing.T) {
 	res := run(t, "recursion.test.", testzones.Recursion(), audit.Options{Resolver: "fake", Active: true})

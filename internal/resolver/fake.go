@@ -110,6 +110,20 @@ func (f *FakeResolver) Query(ctx context.Context, server string, req *dns.Msg) (
 		if soa := zoneSOA(zone); soa != nil {
 			resp.Ns = append(resp.Ns, dns.Copy(soa))
 		}
+		// A signed zone proves denial of existence with NSEC/NSEC3 records (and
+		// their RRSIGs) in the authority section; mirror that for fixtures.
+		for _, rrs := range zone.Records {
+			for _, rr := range rrs {
+				switch r := rr.(type) {
+				case *dns.NSEC, *dns.NSEC3:
+					resp.Ns = append(resp.Ns, dns.Copy(rr))
+				case *dns.RRSIG:
+					if r.TypeCovered == dns.TypeNSEC || r.TypeCovered == dns.TypeNSEC3 {
+						resp.Ns = append(resp.Ns, dns.Copy(rr))
+					}
+				}
+			}
+		}
 	}
 	if zone.Recursive && q.Qtype != dns.TypeAXFR {
 		resp.RecursionAvailable = true

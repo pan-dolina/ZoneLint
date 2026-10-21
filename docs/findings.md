@@ -62,6 +62,8 @@ finding.
 | `DNS-DNSSEC-007` | medium | hardening | No DS record at the delegation |
 | `DNS-DNSSEC-008` | low | hardening | No NSEC/NSEC3 records |
 | `DNS-DNSSEC-009` | medium | standard-violation | Malformed NSEC3 parameters |
+| `DNS-DNSSEC-010` | high | security-weakness | RRSIG failed cryptographic verification |
+| `DNS-DNSSEC-011` | pass | informational | DNSSEC chain of trust and signatures validated |
 
 ## ttl
 

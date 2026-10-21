@@ -2,6 +2,8 @@ package dnssec
 
 import (
 	"bytes"
+	"encoding/binary"
+	"sort"
 	"strings"
 	"time"
 
@@ -133,7 +135,7 @@ func verifyDSMatchesDNSKEY(anchor, zone *ZoneKeys) bool {
 	for _, ds := range dsSet {
 		for _, k := range keys {
 			rdata := DNSKEYRData(k)
-			digest, err := ComputeDSDigest(ds.DigestType, rdata)
+			digest, err := ComputeDSDigest(ds.DigestType, apex, rdata)
 			if err != nil {
 				continue
 			}
@@ -180,10 +182,7 @@ func mergeSigs(m map[string][]*RRSIGInfo) []*RRSIGInfo {
 // first failing signature, or -1.
 func VerifyRRSIGForType(zk *ZoneKeys, name string, rtype uint16, now time.Time) int {
 	sigs := zk.RRSigs[name]
-	var signedRData [][]byte
-	for _, rr := range zk.ByType[name][rtype] {
-		signedRData = append(signedRData, dnsutil.RRData(rr))
-	}
+	rrs := zk.ByType[name][rtype]
 	for i, sig := range sigs {
 		if uint16(sig.TypeCovered) != rtype {
 			continue
@@ -192,17 +191,77 @@ func VerifyRRSIGForType(zk *ZoneKeys, name string, rtype uint16, now time.Time) 
 		if key == nil {
 			continue
 		}
-		// Prepend the RRSIG's own rdata (minus signature) per RFC 4035 §5.2,
-		// then concatenate the signed RR RDATA.
-		full := sig.RawRdata
-		for _, s := range signedRData {
-			full = append(full, s...)
-		}
-		if err := Verify(sig, key, [][]byte{full}); err != nil {
+		if err := Verify(sig, key, [][]byte{signedData(sig, name, rrs)}); err != nil {
 			return i
 		}
 	}
 	return -1
+}
+
+// signedData builds the octet sequence covered by an RRSIG per RFC 4035
+// §5.3.2: the RRSIG RDATA with the Signature field excluded, followed by each
+// RR of the RRset in canonical form (owner | type | class | OrigTTL |
+// RDLENGTH | RDATA) in canonical order.
+func signedData(sig *RRSIGInfo, owner string, rrs []dns.RR) []byte {
+	out := append([]byte{}, sig.RawRdata...)
+
+	// Wildcard expansion (RFC 4035 §5.3.2): when the RRSIG covers fewer
+	// labels than the owner name has, the signed owner is the wildcard form.
+	if labels := countLabels(owner); labels > int(sig.Labels) {
+		owner = "*." + strings.Join(lastLabels(owner, int(sig.Labels)), ".") + "."
+	}
+
+	// The RRset may contain duplicates when records were merged from several
+	// responses; a canonical RRset holds each RR once.
+	canon := make([][]byte, 0, len(rrs))
+	seenRD := map[string]bool{}
+	for _, rr := range rrs {
+		rd := dnsutil.RRData(rr)
+		if rd == nil {
+			continue
+		}
+		k := string(rd)
+		if seenRD[k] {
+			continue
+		}
+		seenRD[k] = true
+		canon = append(canon, rd)
+	}
+	sort.Slice(canon, func(i, j int) bool { return bytes.Compare(canon[i], canon[j]) < 0 })
+
+	ownerWire := dnsutil.CanonicalName(owner)
+	for _, rd := range canon {
+		out = append(out, ownerWire...)
+		var hdr [8]byte
+		binary.BigEndian.PutUint16(hdr[0:2], sig.TypeCovered)
+		binary.BigEndian.PutUint16(hdr[2:4], dns.ClassINET)
+		binary.BigEndian.PutUint32(hdr[4:8], sig.OriginalTTL)
+		out = append(out, hdr[:]...)
+		var rl [2]byte
+		binary.BigEndian.PutUint16(rl[:], uint16(len(rd))) //#nosec G115 -- RDATA length fits in uint16
+		out = append(out, rl[:]...)
+		out = append(out, rd...)
+	}
+	return out
+}
+
+// countLabels returns the number of labels in a fully-qualified name.
+func countLabels(fqdn string) int {
+	n := strings.TrimSuffix(dns.Fqdn(fqdn), ".")
+	if n == "" {
+		return 0
+	}
+	return len(strings.Split(n, "."))
+}
+
+// lastLabels returns the rightmost n labels of a fully-qualified name.
+func lastLabels(fqdn string, n int) []string {
+	name := strings.TrimSuffix(dns.Fqdn(fqdn), ".")
+	labels := strings.Split(name, ".")
+	if n > len(labels) {
+		n = len(labels)
+	}
+	return labels[len(labels)-n:]
 }
 
 func keyForKeyTag(zk *ZoneKeys, tag uint16) *KeyInfo {
@@ -214,4 +273,36 @@ func keyForKeyTag(zk *ZoneKeys, tag uint16) *KeyInfo {
 		}
 	}
 	return nil
+}
+
+// HasKeyForTag reports whether the zone keys contain a DNSKEY with the tag.
+func (z *ZoneKeys) HasKeyForTag(tag uint16) bool {
+	return keyForKeyTag(z, tag) != nil
+}
+
+// InZone returns a copy of z restricted to RRSIGs signed by the given zone.
+// Negative responses at a delegation carry NSEC/NSEC3 records signed by the
+// parent zone; those are not part of the zone's own DNSSEC state.
+func (z *ZoneKeys) InZone(zone string) *ZoneKeys {
+	apex := dns.Fqdn(strings.ToLower(zone))
+	out := &ZoneKeys{
+		DNSKEYs: map[string][]*KeyInfo{},
+		RRSigs:  map[string][]*RRSIGInfo{},
+		DSs:     map[string][]*DSInfo{},
+		ByType:  z.ByType,
+	}
+	for name, ks := range z.DNSKEYs {
+		out.DNSKEYs[name] = ks
+	}
+	for name, ds := range z.DSs {
+		out.DSs[name] = ds
+	}
+	for name, ss := range z.RRSigs {
+		for _, s := range ss {
+			if strings.EqualFold(s.SignerName, apex) {
+				out.RRSigs[name] = append(out.RRSigs[name], s)
+			}
+		}
+	}
+	return out
 }

@@ -4,14 +4,21 @@
 package testzones
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/binary"
+	"encoding/hex"
 	"net"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/miekg/dns"
 
+	dnsutil "github.com/pan-dolina/ZoneLint/internal/dns"
 	"github.com/pan-dolina/ZoneLint/internal/resolver"
 )
 
@@ -328,16 +335,16 @@ func ExtremeTTL() *resolver.Zone {
 
 // DNSKEYRecord builds a valid Ed25519 DNSKEY record for the zone.
 func DNSKEYRecord(zone string) dns.RR {
-	priv, _, err := ed25519.GenerateKey(rand.Reader)
+	pub, _, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		panic(err)
 	}
 	dk := new(dns.DNSKEY)
 	dk.Hdr = dns.RR_Header{Name: zone, Rrtype: dns.TypeDNSKEY, Class: dns.ClassINET, Ttl: 3600}
 	dk.Flags = 256
-	dk.Protocol = 1
+	dk.Protocol = 3
 	dk.Algorithm = 15 // Ed25519
-	dk.PublicKey = base64.StdEncoding.EncodeToString(priv[32:])
+	dk.PublicKey = base64.StdEncoding.EncodeToString(pub)
 	return dk
 }
 
@@ -375,6 +382,209 @@ func BrokenDNSSec() *resolver.Zone {
 				DNSKEYRecord(zone),
 				a(zone, "203.0.113.30", 300),
 			},
+		},
+	}
+}
+
+// testKey is an Ed25519 DNSSEC key used to build realistically signed fixtures.
+type testKey struct {
+	priv   ed25519.PrivateKey
+	pub    ed25519.PublicKey
+	keyTag uint16
+}
+
+func newTestKey() *testKey {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		panic(err)
+	}
+	return &testKey{priv: priv, pub: pub, keyTag: rfc4034KeyTag(257, 3, 15, pub)}
+}
+
+// rfc4034KeyTag computes the DNSKEY key tag per RFC 4034 Appendix B over the
+// full DNSKEY RDATA (flags, protocol, algorithm, public key).
+func rfc4034KeyTag(flags uint16, protocol, algo uint8, key []byte) uint16 {
+	rdata := make([]byte, 4+len(key))
+	binary.BigEndian.PutUint16(rdata[0:2], flags)
+	rdata[2] = protocol
+	rdata[3] = algo
+	copy(rdata[4:], key)
+	var ac uint32
+	for i := 0; i < len(rdata); i++ {
+		if i&1 == 0 {
+			ac += uint32(rdata[i]) << 8
+		} else {
+			ac += uint32(rdata[i])
+		}
+	}
+	ac += (ac >> 16) & 0xffff
+	return uint16(ac & 0xffff)
+}
+
+// dnskeyRR returns the DNSKEY record for the key (flags 257: KSK+SEP).
+func (k *testKey) dnskeyRR(zone string) *dns.DNSKEY {
+	dk := new(dns.DNSKEY)
+	dk.Hdr = dns.RR_Header{Name: name(zone), Rrtype: dns.TypeDNSKEY, Class: dns.ClassINET, Ttl: 3600}
+	dk.Flags = 257
+	dk.Protocol = 3
+	dk.Algorithm = 15 // Ed25519
+	dk.PublicKey = base64.StdEncoding.EncodeToString(k.pub)
+	return dk
+}
+
+// dsRR returns the DS record at the delegation matching the DNSKEY (SHA-256).
+// The digest is computed per RFC 4034 §5.1.4 over the canonical owner name
+// concatenated with the DNSKEY RDATA.
+func (k *testKey) dsRR(zone string, dk *dns.DNSKEY) *dns.DS {
+	keyRData := make([]byte, 4+len(k.pub))
+	binary.BigEndian.PutUint16(keyRData[0:2], dk.Flags)
+	keyRData[2] = dk.Protocol
+	keyRData[3] = dk.Algorithm
+	copy(keyRData[4:], k.pub)
+	digest := sha256.Sum256(append(dnsutil.CanonicalName(zone), keyRData...))
+	return &dns.DS{
+		Hdr:        dns.RR_Header{Name: name(zone), Rrtype: dns.TypeDS, Class: dns.ClassINET, Ttl: 3600},
+		KeyTag:     k.keyTag,
+		Algorithm:  15,
+		DigestType: 2,
+		Digest:     hex.EncodeToString(digest[:]),
+	}
+}
+
+// signRRset returns an RRSIG over the RRset, constructed per RFC 4035 §5.3.2:
+// RRSIG RDATA (minus signature, canonical signer name) followed by each RR in
+// canonical form and canonical order. When tamper is true the signature bytes
+// are corrupted so verification must fail.
+func (k *testKey) signRRset(zone string, rrs []dns.RR, tamper bool) *dns.RRSIG {
+	owner := dns.Fqdn(rrs[0].Header().Name)
+	rtype := rrs[0].Header().Rrtype
+	ttl := rrs[0].Header().Ttl
+	labels := len(strings.Split(strings.TrimSuffix(owner, "."), "."))
+	inc := uint32(time.Now().Add(-time.Hour).Unix())     //#nosec G115 -- test fixture: Unix time fits in uint32
+	exp := uint32(time.Now().Add(48 * time.Hour).Unix()) //#nosec G115 -- test fixture: Unix time fits in uint32
+
+	hdr := make([]byte, 18)
+	binary.BigEndian.PutUint16(hdr[0:2], rtype)
+	hdr[2] = 15           // Ed25519
+	hdr[3] = byte(labels) //#nosec G115 -- test fixture: label count fits in uint8
+	binary.BigEndian.PutUint32(hdr[4:8], ttl)
+	binary.BigEndian.PutUint32(hdr[8:12], exp)
+	binary.BigEndian.PutUint32(hdr[12:16], inc)
+	binary.BigEndian.PutUint16(hdr[16:18], k.keyTag)
+
+	msg := append(append([]byte{}, hdr...), dnsutil.CanonicalName(zone)...)
+	rdatas := make([][]byte, 0, len(rrs))
+	for _, rr := range rrs {
+		rdatas = append(rdatas, dnsutil.RRData(rr))
+	}
+	sort.Slice(rdatas, func(i, j int) bool { return bytes.Compare(rdatas[i], rdatas[j]) < 0 })
+	for _, rd := range rdatas {
+		msg = append(msg, dnsutil.CanonicalName(owner)...)
+		var rh [8]byte
+		binary.BigEndian.PutUint16(rh[0:2], rtype)
+		binary.BigEndian.PutUint16(rh[2:4], dns.ClassINET)
+		binary.BigEndian.PutUint32(rh[4:8], ttl)
+		msg = append(msg, rh[:]...)
+		var rl [2]byte
+		binary.BigEndian.PutUint16(rl[:], uint16(len(rd)))
+		msg = append(msg, rl[:]...)
+		msg = append(msg, rd...)
+	}
+
+	sig := ed25519.Sign(k.priv, msg)
+	if tamper {
+		sig[0] ^= 0xff
+	}
+	return &dns.RRSIG{
+		Hdr:         dns.RR_Header{Name: owner, Rrtype: dns.TypeRRSIG, Class: dns.ClassINET, Ttl: ttl},
+		TypeCovered: rtype,
+		Algorithm:   15,
+		Labels:      uint8(labels), //#nosec G115 -- test fixture: label count fits in uint8
+		OrigTtl:     ttl,
+		Expiration:  exp,
+		Inception:   inc,
+		KeyTag:      k.keyTag,
+		SignerName:  name(zone),
+		Signature:   base64.StdEncoding.EncodeToString(sig),
+	}
+}
+
+// UnsignedParentNSEC is an unsigned zone whose negative responses carry NSEC
+// records signed by the parent zone, as real delegations do.
+func UnsignedParentNSEC() *resolver.Zone {
+	zone := "unsignedparent.test."
+	parent := "test."
+	nsecRR := &dns.NSEC{
+		Hdr:        dns.RR_Header{Name: name(zone), Rrtype: dns.TypeNSEC, Class: dns.ClassINET, Ttl: 3600},
+		NextDomain: name(zone),
+		TypeBitMap: []uint16{dns.TypeNS, dns.TypeSOA, dns.TypeRRSIG, dns.TypeNSEC},
+	}
+	now := time.Now()
+	exp := uint32(now.Add(48 * time.Hour).Unix()) //#nosec G115 -- test fixture: Unix time fits in uint32
+	inc := uint32(now.Add(-1 * time.Hour).Unix()) //#nosec G115 -- test fixture: Unix time fits in uint32
+	sig := signRR(nsecRR, dns.TypeNSEC, exp, inc, 257, 15)
+	if rrsig, ok := sig.(*dns.RRSIG); ok {
+		rrsig.SignerName = name(parent) // signed by the parent, not this zone
+	}
+	return &resolver.Zone{
+		Name: zone,
+		Records: map[string][]dns.RR{
+			zone: {
+				soa(zone, "ns1.unsignedparent.test.", "admin.unsignedparent.test.", 2024010101, 7200, 1800, 1209600, 3600, 3600),
+				ns(zone, "ns1.unsignedparent.test.", 3600),
+				a(zone, "203.0.113.200", 300),
+				nsecRR,
+				sig,
+			},
+			"ns1.unsignedparent.test.": {a("ns1.unsignedparent.test.", "198.51.100.200", 3600)},
+		},
+	}
+}
+
+// DNSSECSigned returns a fully and correctly signed zone: real Ed25519
+// signatures over the apex RRsets, a matching DS at the delegation, and an
+// NSEC record for authenticated denial of existence.
+func DNSSECSigned() *resolver.Zone {
+	return signedZone(false)
+}
+
+// DNSSECTampered returns a signed zone whose apex A RRSIG is corrupted, so
+// cryptographic verification must fail.
+func DNSSECTampered() *resolver.Zone {
+	return signedZone(true)
+}
+
+func signedZone(tamper bool) *resolver.Zone {
+	zone := "signed.test."
+	k := newTestKey()
+
+	soaRR := soa(zone, "ns1.signed.test.", "admin.signed.test.", 2024010101, 7200, 1800, 1209600, 3600, 3600)
+	ns1 := ns(zone, "ns1.signed.test.", 3600)
+	ns2 := ns(zone, "ns2.signed.test.", 3600)
+	aRR := a(zone, "93.184.216.34", 300)
+	txtRR := txt(zone, "v=spf1 -all", 300)
+	dk := k.dnskeyRR(zone)
+	dsRR := k.dsRR(zone, dk)
+	nsecRR := &dns.NSEC{
+		Hdr:        dns.RR_Header{Name: name(zone), Rrtype: dns.TypeNSEC, Class: dns.ClassINET, Ttl: 3600},
+		NextDomain: name(zone),
+		TypeBitMap: []uint16{dns.TypeA, dns.TypeNS, dns.TypeSOA, dns.TypeTXT, dns.TypeRRSIG, dns.TypeNSEC, dns.TypeDNSKEY},
+	}
+
+	return &resolver.Zone{
+		Name: zone,
+		Records: map[string][]dns.RR{
+			zone: {
+				soaRR, ns1, ns2, aRR, txtRR, dk, dsRR, nsecRR,
+				k.signRRset(zone, []dns.RR{soaRR}, false),
+				k.signRRset(zone, []dns.RR{ns1, ns2}, false),
+				k.signRRset(zone, []dns.RR{aRR}, tamper),
+				k.signRRset(zone, []dns.RR{txtRR}, false),
+				k.signRRset(zone, []dns.RR{dk}, false),
+				k.signRRset(zone, []dns.RR{nsecRR}, false),
+			},
+			"ns1.signed.test.": {a("ns1.signed.test.", "1.1.1.1", 3600)},
+			"ns2.signed.test.": {a("ns2.signed.test.", "1.0.0.1", 3600)},
 		},
 	}
 }

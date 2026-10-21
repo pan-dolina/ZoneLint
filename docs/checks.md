@@ -70,14 +70,15 @@ category, title, explanation, evidence, recommendation, and references.
 |----|----------|-------------|
 | DNS-DNSSEC-001 | high | RRSIG present without DNSKEY. |
 | DNS-DNSSEC-002 | medium | DNSKEY present without RRSIG. |
-| DNS-DNSSEC-003 | high | DS/DNSKEY mismatch. |
-| DNS-DNSSEC-004 | medium | No DS at delegation. |
-| DNS-DNSSEC-005 | high | Expired signature. |
-| DNS-DNSSEC-006 | medium | Not-yet-valid signature. |
-| DNS-DNSSEC-007 | low | Deprecated algorithm. |
-| DNS-DNSSEC-008 | high | Broken chain of trust. |
-| DNS-DNSSEC-009 | low | No NSEC/NSEC3 records. |
-| DNS-DNSSEC-010 | medium | Malformed NSEC3 parameters. |
+| DNS-DNSSEC-003 | high | Expired signature. |
+| DNS-DNSSEC-004 | medium | Not-yet-valid signature. |
+| DNS-DNSSEC-005 | low | Deprecated algorithm. |
+| DNS-DNSSEC-006 | high | Broken chain of trust. |
+| DNS-DNSSEC-007 | medium | No DS record at the delegation. |
+| DNS-DNSSEC-008 | low | No NSEC/NSEC3 records. |
+| DNS-DNSSEC-009 | medium | Malformed NSEC3 parameters. |
+| DNS-DNSSEC-010 | high | RRSIG failed cryptographic verification. |
+| DNS-DNSSEC-011 | pass | DNSSEC chain of trust and signatures validated. |
 
 ### TTL (`DNS-TTL-*`)
 

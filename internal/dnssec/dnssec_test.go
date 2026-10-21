@@ -1,15 +1,21 @@
 package dnssec
 
 import (
+	"crypto/ecdsa"
 	"crypto/ed25519"
+	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/binary"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/miekg/dns"
+
+	dnsutil "github.com/pan-dolina/ZoneLint/internal/dns"
 )
 
 type testPrivKey struct {
@@ -26,7 +32,7 @@ func newTestPrivKey(t *testing.T, flags uint16) *testPrivKey {
 	dk := new(dns.DNSKEY)
 	dk.Hdr = dns.RR_Header{Name: "example.test.", Rrtype: dns.TypeDNSKEY, Class: dns.ClassINET, Ttl: 3600}
 	dk.Flags = flags
-	dk.Protocol = 1
+	dk.Protocol = 3
 	dk.Algorithm = Ed25519
 	dk.PublicKey = base64.StdEncoding.EncodeToString(pub)
 	k, err := ParseDNSKEY(dk)
@@ -36,32 +42,51 @@ func newTestPrivKey(t *testing.T, flags uint16) *testPrivKey {
 	return &testPrivKey{priv: priv, keyTag: k.KeyTag}
 }
 
+// signedDataFor builds the RFC 4035 §5.3.2 signed data for an RRset.
+func signedDataFor(algo uint8, rtype uint16, labels int, ttl, exp, inc uint32, keyTag uint16, signer, owner string, rdatas [][]byte) []byte {
+	hdr := make([]byte, 18)
+	binary.BigEndian.PutUint16(hdr[0:2], rtype)
+	hdr[2] = algo
+	hdr[3] = byte(labels) //#nosec G115 -- test fixture: label count fits in uint8
+	binary.BigEndian.PutUint32(hdr[4:8], ttl)
+	binary.BigEndian.PutUint32(hdr[8:12], exp)
+	binary.BigEndian.PutUint32(hdr[12:16], inc)
+	binary.BigEndian.PutUint16(hdr[16:18], keyTag)
+
+	msg := append(append([]byte{}, hdr...), dnsutil.CanonicalName(signer)...)
+	for _, rd := range rdatas {
+		msg = append(msg, dnsutil.CanonicalName(owner)...)
+		var rh [8]byte
+		binary.BigEndian.PutUint16(rh[0:2], rtype)
+		binary.BigEndian.PutUint16(rh[2:4], dns.ClassINET)
+		binary.BigEndian.PutUint32(rh[4:8], ttl)
+		msg = append(msg, rh[:]...)
+		var rl [2]byte
+		binary.BigEndian.PutUint16(rl[:], uint16(len(rd)))
+		msg = append(msg, rl[:]...)
+		msg = append(msg, rd...)
+	}
+	return msg
+}
+
 func (k *testPrivKey) sign(name string, rtype uint16, rdata []byte, now time.Time, ttl uint32) *dns.RRSIG {
 	inc := uint32(now.Unix())
 	exp := uint32(now.Add(48 * time.Hour).Unix())
-	rsigRdata := make([]byte, 18)
-	binary.BigEndian.PutUint16(rsigRdata[0:2], rtype)
-	rsigRdata[2] = Ed25519
-	rsigRdata[3] = 1
-	binary.BigEndian.PutUint32(rsigRdata[4:8], ttl)
-	binary.BigEndian.PutUint32(rsigRdata[8:12], exp)
-	binary.BigEndian.PutUint32(rsigRdata[12:16], inc)
-	binary.BigEndian.PutUint16(rsigRdata[16:18], k.keyTag)
-
-	msg := append(append([]byte{}, rsigRdata...), rdata...)
+	labels := len(strings.Split(strings.TrimSuffix(dns.Fqdn(name), "."), "."))
+	msg := signedDataFor(Ed25519, rtype, labels, ttl, exp, inc, k.keyTag, "example.test.", name, [][]byte{rdata})
 	sig := ed25519.Sign(k.priv, msg)
 
 	r := new(dns.RRSIG)
 	r.Hdr = dns.RR_Header{Name: name, Rrtype: dns.TypeRRSIG, Class: dns.ClassINET, Ttl: ttl}
 	r.TypeCovered = rtype
 	r.Algorithm = Ed25519
-	r.Labels = 1
+	r.Labels = uint8(labels) //#nosec G115 -- test fixture: label count fits in uint8
 	r.OrigTtl = ttl
 	r.Expiration = exp
 	r.Inception = inc
 	r.KeyTag = k.keyTag
 	r.SignerName = "example.test."
-	r.Signature = string(sig)
+	r.Signature = base64.StdEncoding.EncodeToString(sig)
 	return r
 }
 
@@ -85,7 +110,7 @@ func TestKeyTagNonZero(t *testing.T) {
 	for i := range key {
 		key[i] = byte(i)
 	}
-	if KeyTag(256, Ed25519, key) == 0 {
+	if KeyTag(256, 3, Ed25519, key) == 0 {
 		t.Fatal("expected non-zero key tag")
 	}
 }
@@ -122,7 +147,7 @@ func keyFor(priv *testPrivKey) *KeyInfo {
 	dk := new(dns.DNSKEY)
 	dk.Hdr = dns.RR_Header{Name: "example.test.", Rrtype: dns.TypeDNSKEY, Class: dns.ClassINET, Ttl: 3600}
 	dk.Flags = 256
-	dk.Protocol = 1
+	dk.Protocol = 3
 	dk.Algorithm = Ed25519
 	dk.PublicKey = base64.StdEncoding.EncodeToString(pub)
 	k, err := ParseDNSKEY(dk)
@@ -165,6 +190,80 @@ func TestVerifyBadRRSIG(t *testing.T) {
 	}
 }
 
+// TestVerifyECDSAP256RRSIG covers the ECDSA-P256 path (RFC 6605): the DNSKEY
+// public key is X || Y without the 0x04 prefix, and the RRSIG signature is
+// R || S rather than DER.
+func TestVerifyECDSAP256RRSIG(t *testing.T) {
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pubBytes := make([]byte, 64)
+	priv.X.FillBytes(pubBytes[:32])
+	priv.Y.FillBytes(pubBytes[32:])
+
+	dk := new(dns.DNSKEY)
+	dk.Hdr = dns.RR_Header{Name: "example.test.", Rrtype: dns.TypeDNSKEY, Class: dns.ClassINET, Ttl: 3600}
+	dk.Flags = 256
+	dk.Protocol = 3
+	dk.Algorithm = ECDSAP256
+	dk.PublicKey = base64.StdEncoding.EncodeToString(pubBytes)
+	ki, err := ParseDNSKEY(dk)
+	if err != nil {
+		t.Fatalf("parse ECDSA DNSKEY: %v", err)
+	}
+
+	owner := "host.example.test."
+	a1 := makeARR(owner, "203.0.113.58", 300)
+	rdata := dnsutil.RRData(a1)
+	inc := uint32(time.Now().Unix())
+	exp := uint32(time.Now().Add(48 * time.Hour).Unix())
+	labels := len(strings.Split(strings.TrimSuffix(owner, "."), "."))
+	msg := signedDataFor(ECDSAP256, dns.TypeA, labels, 300, exp, inc, ki.KeyTag, "example.test.", owner, [][]byte{rdata})
+	digest := sha256.Sum256(msg)
+	r, s, err := ecdsa.Sign(rand.Reader, priv, digest[:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	sigBytes := make([]byte, 64)
+	r.FillBytes(sigBytes[:32])
+	s.FillBytes(sigBytes[32:])
+
+	rr := &dns.RRSIG{
+		Hdr:         dns.RR_Header{Name: owner, Rrtype: dns.TypeRRSIG, Class: dns.ClassINET, Ttl: 300},
+		TypeCovered: dns.TypeA,
+		Algorithm:   ECDSAP256,
+		Labels:      uint8(labels), //#nosec G115 -- test fixture: label count fits in uint8
+		OrigTtl:     300,
+		Expiration:  exp,
+		Inception:   inc,
+		KeyTag:      ki.KeyTag,
+		SignerName:  "example.test.",
+		Signature:   base64.StdEncoding.EncodeToString(sigBytes),
+	}
+
+	zk := &ZoneKeys{
+		DNSKEYs: map[string][]*KeyInfo{"example.test.": {ki}},
+		RRSigs:  map[string][]*RRSIGInfo{owner: {ParseRRSIG(rr)}},
+		ByType:  map[string]map[uint16][]dns.RR{},
+	}
+	zk.ByType[owner] = map[uint16][]dns.RR{dns.TypeA: {a1}}
+	if idx := VerifyRRSIGForType(zk, owner, dns.TypeA, time.Now()); idx != -1 {
+		t.Fatalf("expected valid ECDSA signature, got failing index %d", idx)
+	}
+
+	// A corrupted signature must fail.
+	bad := make([]byte, 64)
+	for i := range bad {
+		bad[i] = 0xff
+	}
+	rr.Signature = base64.StdEncoding.EncodeToString(bad)
+	zk.RRSigs[owner] = []*RRSIGInfo{ParseRRSIG(rr)}
+	if idx := VerifyRRSIGForType(zk, owner, dns.TypeA, time.Now()); idx == -1 {
+		t.Fatal("expected invalid ECDSA signature to fail")
+	}
+}
+
 func TestExpiredSignature(t *testing.T) {
 	sig := &RRSIGInfo{
 		Algorithm:  Ed25519,
@@ -198,7 +297,7 @@ func TestDSMatchAndMismatch(t *testing.T) {
 	k := keyFor(priv)
 
 	good := &DSInfo{KeyTag: k.KeyTag, Algorithm: Ed25519, DigestType: DigestTypeSHA256}
-	good.Digest, _ = ComputeDSDigest(DigestTypeSHA256, DNSKEYRData(k))
+	good.Digest, _ = ComputeDSDigest(DigestTypeSHA256, "example.test.", DNSKEYRData(k))
 	bad := &DSInfo{KeyTag: k.KeyTag, Algorithm: Ed25519, DigestType: DigestTypeSHA256, Digest: []byte{0x00, 0x01, 0x02}}
 
 	zone := &ZoneKeys{DNSKEYs: map[string][]*KeyInfo{"example.test.": {k}}, DSs: map[string][]*DSInfo{"example.test.": {good}}}
@@ -251,6 +350,7 @@ func keyRRForKey(k *KeyInfo) dns.RR {
 	dk := new(dns.DNSKEY)
 	dk.Hdr = dns.RR_Header{Name: "example.test.", Rrtype: dns.TypeDNSKEY, Class: dns.ClassINET, Ttl: 3600}
 	dk.Flags = k.Flags
+	dk.Protocol = 3
 	dk.Algorithm = k.Algorithm
 	dk.PublicKey = base64.StdEncoding.EncodeToString(k.KeyBytes)
 	return dk

@@ -27,6 +27,16 @@ RRSIG) is reported.
 RFC 9037 deprecated RSASHA1 and RSASHA1-NSEC3. Signatures using these algorithms
 are flagged as low severity and recommend re-signing with a modern algorithm.
 
+## Audit integration
+
+The audit collects DNSSEC material with three bounded queries: DNSKEY and DS at
+the zone apex (with the EDNS DO bit set), and a single query for a random
+non-existent name under the zone, whose negative response carries the SOA and
+NSEC/NSEC3 records. Presence checks, chain-of-trust validation (DS digest vs
+DNSKEY), and cryptographic RRSIG verification run over the collected records;
+a zone whose chain validates and whose in-zone signatures verify is reported
+with `DNS-DNSSEC-011` (pass).
+
 ## Safety
 
 All verification is read-only. ZoneLint never sends crafted queries to trigger

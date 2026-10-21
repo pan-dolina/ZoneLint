@@ -363,6 +363,23 @@ var (
 		Recommendation: "Use valid NSEC3 hash type, flags, iterations and salt. Invalid parameters break authenticated denial of existence.",
 		References:     []string{RFC5155 + "#section-2.1"},
 	})
+	DNSSECInvalidSig = register(Rule{
+		ID:             "DNS-DNSSEC-010",
+		Component:      ComponentDNSSEC,
+		Category:       CategoryWeakness,
+		Severity:       SeverityHigh,
+		Title:          "RRSIG failed cryptographic verification",
+		Recommendation: "Re-sign the zone. A signature that does not verify against the zone DNSKEY breaks validation for the covered RRset.",
+		References:     []string{RFC4035 + "#section-5.3.2", RFC4034 + "#section-3.1.8"},
+	})
+	DNSSECValid = register(Rule{
+		ID:         "DNS-DNSSEC-011",
+		Component:  ComponentDNSSEC,
+		Category:   CategoryInformational,
+		Severity:   SeverityPass,
+		Title:      "DNSSEC chain of trust and signatures validated",
+		References: []string{RFC4035 + "#section-5", RFC4034 + "#section-5.1"},
+	})
 )
 
 // TTL rules.

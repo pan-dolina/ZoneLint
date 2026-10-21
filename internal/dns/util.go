@@ -4,6 +4,8 @@
 package dnsutil
 
 import (
+	"encoding/base32"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
 	"net"
@@ -14,6 +16,33 @@ import (
 
 func decodeHexField(s string) ([]byte, error) {
 	return hex.DecodeString(strings.TrimSpace(s))
+}
+
+// decodeBase64Field decodes base64 text as used in DNS presentation/wire
+// formats. If the input is not valid base64 it is returned raw, so callers
+// work with both base64 text and already-decoded bytes.
+func decodeBase64Field(s string) ([]byte, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil, nil
+	}
+	if b, err := base64.StdEncoding.DecodeString(s); err == nil {
+		return b, nil
+	}
+	if b, err := base64.RawStdEncoding.DecodeString(s); err == nil {
+		return b, nil
+	}
+	return []byte(s), nil
+}
+
+// decodeBase32HexField decodes base32hex (RFC 4648, no padding) text as used
+// for NSEC3 next-domain fields.
+func decodeBase32HexField(s string) ([]byte, error) {
+	s = strings.TrimSpace(strings.ToUpper(s))
+	if s == "" {
+		return nil, nil
+	}
+	return base32.HexEncoding.WithPadding(base32.NoPadding).DecodeString(s)
 }
 
 // ipTo4 returns the 4-byte form of an IPv4 address for wire-format RDATA.
@@ -144,8 +173,8 @@ func RRsOfType(records []dns.RR, typ uint16) []dns.RR {
 	return out
 }
 
-// RRData returns the wire-format RDATA of a record, or nil if unavailable.
-// Names are emitted in uncompressed form (RFC 4034 §3.1.3 canonical form).
+// RRData returns the wire-format RDATA of a record in canonical form
+// (RFC 4034 §3.1.3: names lowercase and uncompressed), or nil if unavailable.
 func RRData(rr dns.RR) []byte {
 	if rr == nil {
 		return nil
@@ -164,37 +193,116 @@ func RRData(rr dns.RR) []byte {
 	case *dns.NS:
 		return uncompressedName(r.Ns)
 	case *dns.SOA:
-		return uncompressedName(r.Ns)
+		out := uncompressedName(r.Ns)
+		out = append(out, uncompressedName(r.Mbox)...)
+		var tail [20]byte
+		binary.BigEndian.PutUint32(tail[0:4], r.Serial)
+		binary.BigEndian.PutUint32(tail[4:8], r.Refresh)
+		binary.BigEndian.PutUint32(tail[8:12], r.Retry)
+		binary.BigEndian.PutUint32(tail[12:16], r.Expire)
+		binary.BigEndian.PutUint32(tail[16:20], r.Minttl)
+		return append(out, tail[:]...)
 	case *dns.TXT:
 		return txtRdata(r)
 	case *dns.CNAME:
 		return uncompressedName(r.Target)
+	case *dns.PTR:
+		return uncompressedName(r.Ptr)
 	case *dns.MX:
 		pref := make([]byte, 2)
 		binary.BigEndian.PutUint16(pref, r.Preference)
 		return append(pref, uncompressedName(r.Mx)...)
+	case *dns.SRV:
+		out := make([]byte, 6)
+		binary.BigEndian.PutUint16(out[0:2], r.Priority)
+		binary.BigEndian.PutUint16(out[2:4], r.Weight)
+		binary.BigEndian.PutUint16(out[4:6], r.Port)
+		return append(out, uncompressedName(r.Target)...)
 	case *dns.CAA:
 		return caaRdata(r)
 	case *dns.DNSKEY:
 		return dnskeyRdata(r)
 	case *dns.DS:
 		return dsRdata(r)
+	case *dns.NSEC:
+		out := uncompressedName(r.NextDomain)
+		return append(out, typeBitmap(r.TypeBitMap)...)
+	case *dns.NSEC3:
+		salt, err := decodeHexField(r.Salt)
+		if err != nil {
+			return nil
+		}
+		next, err := decodeBase32HexField(r.NextDomain)
+		if err != nil {
+			return nil
+		}
+		out := []byte{r.Hash, r.Flags}
+		out = append(out, byte(r.Iterations>>8), byte(r.Iterations))
+		out = append(out, byte(len(salt))) //#nosec G115 -- salt length fits in uint8 on the wire
+		out = append(out, salt...)
+		out = append(out, byte(len(next))) //#nosec G115 -- hash length fits in uint8 on the wire
+		out = append(out, next...)
+		return append(out, typeBitmap(r.TypeBitMap)...)
 	}
 	return nil
 }
 
-// uncompressedName returns the dot-labeled, zero-terminated form of a name.
-func uncompressedName(n string) []byte {
-	n = dns.Fqdn(n)
-	var out []byte
-	for _, label := range splitLabels(n) {
-		if len(label) > 63 {
-			label = label[:63]
+// typeBitmap encodes an NSEC/NSEC3 type bitmap (RFC 4034 §4.1.2).
+func typeBitmap(types []uint16) []byte {
+	sorted := make([]int, 0, len(types))
+	seen := map[int]bool{}
+	for _, t := range types {
+		if !seen[int(t)] {
+			seen[int(t)] = true
+			sorted = append(sorted, int(t))
 		}
-		out = append(out, byte(len(label))) //#nosec G115 -- label length is bounded to 63 by the check above
-		out = append(out, label...)
 	}
-	return append(out, 0x00)
+	// Insertion sort: type bitmaps are tiny.
+	for i := 1; i < len(sorted); i++ {
+		for j := i; j > 0 && sorted[j] < sorted[j-1]; j-- {
+			sorted[j], sorted[j-1] = sorted[j-1], sorted[j]
+		}
+	}
+	var out []byte
+	for i := 0; i < len(sorted); {
+		window := byte(sorted[i] >> 8)
+		last := i
+		for last < len(sorted) && byte(sorted[last]>>8) == window {
+			last++
+		}
+		bits := make([]byte, 32)
+		for _, t := range sorted[i:last] {
+			bits[(t&0xff)>>3] |= 0x80 >> (uint(t) & 7)
+		}
+		out = append(out, window, 0)
+		n := 32
+		for n > 0 && bits[n-1] == 0 {
+			n--
+		}
+		out[len(out)-1] = byte(n)
+		out = append(out, bits[:n]...)
+		i = last
+	}
+	return out
+}
+
+// CanonicalName returns the canonical wire form of a DNS name: lowercase,
+// dot-labeled, zero-terminated (RFC 4034 §6.2).
+func CanonicalName(n string) []byte {
+	return uncompressedName(n)
+}
+
+// uncompressedName returns the canonical wire form of a name: lowercase and
+// uncompressed (RFC 4034 §6.2). DNS presentation escapes (e.g. \000) are
+// decoded by the packer.
+func uncompressedName(n string) []byte {
+	n = dns.Fqdn(strings.ToLower(n))
+	buf := make([]byte, 256)
+	off, err := dns.PackDomainName(n, buf, 0, nil, false)
+	if err != nil {
+		return nil
+	}
+	return buf[:off]
 }
 
 func splitLabels(n string) []string {
@@ -228,11 +336,18 @@ func caaRdata(r *dns.CAA) []byte {
 	return append(out, r.Value...)
 }
 
+// dnskeyRdata returns the canonical wire-format DNSKEY RDATA:
+// Flags (uint16), Protocol (uint8), Algorithm (uint8), PublicKey.
 func dnskeyRdata(r *dns.DNSKEY) []byte {
-	out := make([]byte, 3)
-	binary.BigEndian.PutUint16(out, r.Flags)
-	out = append(out, byte(r.Algorithm))
-	return append(out, r.PublicKey...)
+	key, err := decodeBase64Field(r.PublicKey)
+	if err != nil {
+		return nil
+	}
+	out := make([]byte, 4)
+	binary.BigEndian.PutUint16(out[0:2], r.Flags)
+	out[2] = r.Protocol
+	out[3] = r.Algorithm
+	return append(out, key...)
 }
 
 func dsRdata(r *dns.DS) []byte {

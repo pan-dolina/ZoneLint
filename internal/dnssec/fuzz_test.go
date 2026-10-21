@@ -45,6 +45,6 @@ func FuzzKeyTag(f *testing.F) {
 		keyLen %= 128
 		key := make([]byte, keyLen)
 		_, _ = rand.Read(key)
-		_ = KeyTag(flags, algo, key)
+		_ = KeyTag(flags, 3, algo, key)
 	})
 }
